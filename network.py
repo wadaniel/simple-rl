@@ -9,9 +9,9 @@ def initValuePolicyNetwork(stateSpace, actionSpace, hiddenLayers):
     inputs = tf.keras.Input(shape=(stateSpace,))
     for i, size in enumerate(hiddenLayers):
         if i == 0:
-            x = tf.keras.layers.Dense(size, kernel_initializer=scaledGlorot, activation='linear')(inputs)
+            x = tf.keras.layers.Dense(size, kernel_initializer=scaledGlorot, activation='tanh')(inputs)
         else:
-            x = tf.keras.layers.Dense(size, kernel_initializer=scaledGlorot, activation='linear')(x)
+            x = tf.keras.layers.Dense(size, kernel_initializer=scaledGlorot, activation='tanh')(x)
 
 
     value = tf.keras.layers.Dense(1, kernel_initializer=scaledGlorot, activation = "linear")(x)

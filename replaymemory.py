@@ -81,3 +81,6 @@ class ReplayMemory:
             self.store(episodeId, state, action, reward, isTerminal, stateValue, mean, sdev, retraceValues[idx], True, 1.0)
 
         self.rewardScalingFactor = np.sqrt(self.size/self.sumSquaredReward+1e-12)
+
+    def getScaledReward(self, expId):
+        return self.rewardVector[expId]*self.rewardScalingFactor
