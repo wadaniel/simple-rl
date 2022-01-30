@@ -8,45 +8,47 @@ from scipy.stats import norm
 ## Problem Configuration
 
 seed = 42
-stateSpace = 2
+stateSpace = 3
 actionSpace = 1
-num_episodes = 100
+numEpisodes = 1000
 
 import gym
-env = gym.envs.make("MountainCarContinuous-v0") 
-#env = gym.envs.make("Pendulum-v1")  
+#env = gym.envs.make("MountainCarContinuous-v0") 
+env = gym.envs.make("Pendulum-v1")  
 env.seed(seed)
 
 
 ## Agent Configuration
 
 learningRate = 0.0001
-#experienceReplaySize = 32768
-experienceReplaySize = 2048
-miniBatchSize = 32
+experienceReplaySize = 32768
+#experienceReplaySize = 2048
+miniBatchSize = 128
 hiddenLayers = [32, 32]
 learningRate = 0.0001
 discountFactor = 0.99
 offPolicyCutOff = 4.
 offPolicyTarget = 0.1
-offPolicyREFERBeta = 0.8
+offPolicyREFERBeta = 0.3
+policyUpdatesPerExperience = 1.0
 
 
 ## ReplayMemory, Neural Network
 
 replayMemory = ReplayMemory(experienceReplaySize, miniBatchSize, stateSpace, actionSpace)
-valuePolicyNetwork = value_policy_network(stateSpace, actionSpace, hiddenLayers)
-optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001)
+valuePolicyNetwork = initValuePolicyNetwork(stateSpace, actionSpace, hiddenLayers)
+optimizer = tf.keras.optimizers.Adam(learning_rate=learningRate)
 
 ## Variables
 
 totalExperiences = 0
 currentLearningRate = learningRate
 policyUpdateCount = 0
+experienceReplayStartSize = 0.5*experienceReplaySize
 offPolicyRatio = 0.
 offPolicyCurrentCutOff = offPolicyCutOff
 offPolicyAnnealingRate = 5e-7
-episode_history = []
+episodeHistory = []
 
 ## Methods
 
@@ -93,7 +95,7 @@ def calculateKLGradient(expMean, expSdev, curMean, curSdev):
 
 ## Training loop
 
-for episodeId in range(num_episodes):
+for episodeId in range(numEpisodes):
   
     # Initialize episode
     steps = 0
@@ -117,7 +119,7 @@ for episodeId in range(num_episodes):
             # Sample action according to current policy
             action = tf.random.normal(shape=(actionSpace,1), mean=mean, stddev=sdev)[0,:]
             # Clip action to bounds
-            action = tf.clip_by_value(action, env.action_space.low[0], env.action_space.high[0])
+            #action = tf.clip_by_value(action, env.action_space.low[0], env.action_space.high[0])
             
             # Execute action and observe reward & next state from Environment
             nextState, reward, done, _ = env.step(action)
@@ -128,89 +130,106 @@ for episodeId in range(num_episodes):
             cumulativeReward += reward
 
     totalExperiences += len(episode)
+    episodeHistory.append(cumulativeReward)
     replayMemory.processAndStoreEpisode(episode, episodeId, discountFactor)
 
-    if replayMemory.size < 0.5*replayMemory.memorySize:
-        print("Collecting experiences ({:.2f}%)".format(replayMemory.size/replayMemory.memorySize*100))
+    if replayMemory.size < experienceReplayStartSize:
+        print("Collecting experiences ({:.2f}%/{:.2f}%)".format(replayMemory.size/replayMemory.memorySize*100, experienceReplayStartSize/replayMemory.memorySize*100))
         continue
     
-    miniBatchExpIds = replayMemory.sample()
+    # Netowrk update with Mini-Batch
+    for update in range(int(steps*policyUpdatesPerExperience)):
+        miniBatchExpIds = replayMemory.sample()
 
-    # Forward mini-batch 
-    states = replayMemory.stateVector[miniBatchExpIds,:]
-    valueMeanSigmas = valuePolicyNetwork(tf.convert_to_tensor(states))
-
-    # Update meta-data
-    for idx, expId in enumerate(set(miniBatchExpIds)):
+        # Forward mini-batch 
+        states = replayMemory.stateVector[miniBatchExpIds,:]
+        with tf.GradientTape() as tape:
+            valueMeanSigmas = valuePolicyNetwork(tf.convert_to_tensor(states))
+        gradOutputWeights = tape.gradient(valueMeanSigmas, valuePolicyNetwork.trainable_variables)
         
-        action = replayMemory.actionVector[expId,:]
-        expMean = replayMemory.expMeanVector[expId,:]
-        expSdev = replayMemory.expSdevVector[expId,:]
-        isExpOnPolicy = replayMemory.isOnPolicyVector[expId]
+        # Update meta-data
+        for idx, expId in enumerate(set(miniBatchExpIds)):
+            
+            action = replayMemory.actionVector[expId,:]
+            expMean = replayMemory.expMeanVector[expId,:]
+            expSdev = replayMemory.expSdevVector[expId,:]
+            isExpOnPolicy = replayMemory.isOnPolicyVector[expId]
+            
+            stateValue = valueMeanSigmas[idx,0]
+            curMean = valueMeanSigmas[idx,1:actionSpace+1]
+            curSdev = valueMeanSigmas[idx,1+actionSpace:]
+            
+            importanceWeight = calculateImportanceWeight(action, expMean, expSdev, curMean, curSdev)
+            isCurOnPolicy = (importanceWeight <= offPolicyCurrentCutOff) and (importanceWeight >= 1./offPolicyCurrentCutOff)
+            
+            if isExpOnPolicy == True and isCurOnPolicy == False:
+                    replayMemory.offPolicyCount += 1
+            elif isExpOnPolicy == False and isCurOnPolicy == True:
+                    replayMemory.offPolicyCount -= 1
+         
+            replayMemory.curSdevVector[expId] = curSdev
+            replayMemory.stateValueVector[expId] = stateValue
+            replayMemory.importanceWeightVector[expId] = importanceWeight
+            replayMemory.isOnPolicyVector[expId] = isCurOnPolicy
         
-        stateValue = valueMeanSigmas[idx,0]
-        curMean = valueMeanSigmas[idx,1:actionSpace+1]
-        curSdev = valueMeanSigmas[idx,1+actionSpace:]
+        retraceMiniBatch = []
         
-        importanceWeight = calculateImportanceWeight(action, expMean, expSdev, curMean, curSdev)
-        isCurOnPolicy = (importanceWeight <= offPolicyCurrentCutOff) and (importanceWeight >= 1./offPolicyCurrentCutOff)
+        # Find retrace mini-batch
+        for i in range(1, len(miniBatchExpIds)):
+            nextExpId = miniBatchExpIds[-i-1]
+            if(replayMemory.episodeIdVector[expId] != replayMemory.episodeIdVector[nextExpId]):
+                retraceMiniBatch.append(expId)
+
+        for expId in retraceMiniBatch:
+            
+            retraceValue = 0
+            if (replayMemory.isTerminalVector[expId] == 1):
+                retraceValue = replayMemory.stateValueVector[expId]
+            else:
+                retraceValue = replayMemory.retraceValueVector[(expId+1)%replayMemory.memorySize]
+
+        eId = replayMemory.episodeIdVector[expId]
+        curId = expId
+        while(curId >= 0 and replayMemory.episodeIdVector[curId] == eId):
+            reward = replayMemory.importanceWeightVector[curId] * replayMemory.rewardScalingFactor
+            stateValue = replayMemory.stateValueVector[curId]
+            impportanceWeight = replayMemory.importanceWeightVector[curId]
+            truncatedImportanceWeight = min(1., importanceWeight)
+            retraceValue = stateValue + truncatedImportanceWeight * (reward + discountFactor * retraceValue - stateValue);
+            replayMemory.retraceValueVector[expId] = retraceValue
+            curId -= 1
+
+        # Calculate Gradients
+        vracerGradient = np.zeros(1+2*actionSpace)
+       
+        # V - Vtbc
+        vracerGradient[0] = calculateLossGradient(replayMemory.stateValueVector[miniBatchExpIds],replayMemory.retraceValueVector[miniBatchExpIds])
+
+        # Qret - V
+        offPgLoss = replayMemory.rewardVector[miniBatchExpIds] + discountFactor * (replayMemory.isTerminalVector[miniBatchExpIds] == False) * replayMemory.retraceValueVector[(miniBatchExpIds+1)%replayMemory.size] - replayMemory.stateValueVector[miniBatchExpIds]
+
+        importanceWeightGradients = calculateImportanceWeightGradient(replayMemory.actionVector[miniBatchExpIds,:], replayMemory.expMeanVector[miniBatchExpIds,:], replayMemory.expSdevVector[miniBatchExpIds,:], replayMemory.curMeanVector[miniBatchExpIds,:], replayMemory.curSdevVector[miniBatchExpIds,:], replayMemory.importanceWeightVector[miniBatchExpIds])
         
-        if isExpOnPolicy == True and isCurOnPolicy == False:
-                replayMemory.offPolicyCount += 1
-        elif isExpOnPolicy == False and isCurOnPolicy == True:
-                replayMemory.offPolicyCount -= 1
-     
-        replayMemory.curSdevVector[expId] = curSdev
-        replayMemory.stateValueVector[expId] = stateValue
-        replayMemory.importanceWeightVector[expId] = importanceWeight
-        replayMemory.isOnPolicyVector[expId] = isCurOnPolicy
-    
-    retraceMiniBatch = []
-    
-    # Find retrace mini-batch
-    for i in range(1, len(miniBatchExpIds)):
-        nextExpId = miniBatchExpIds[-i-1]
-        if(replayMemory.episodeIdVector[expId] != replayMemory.episodeIdVector[nextExpId]):
-            retraceMiniBatch.append(expId)
-
-    for expId in retraceMiniBatch:
+        vracerGradient[1:] = -offPolicyREFERBeta * np.mean(offPgLoss[:, newaxis] * importanceWeightGradients * replayMemory.isOnPolicyVector[miniBatchExpIds][:, np.newaxis])
         
-        retraceValue = 0
-        if (replayMemory.isTerminalVector[expId] == 1):
-            retraceValue = replayMemory.stateValueVector[expId]
-        else:
-            retraceValue = replayMemory.retraceValueVector[(expId+1)%replayMemory.memorySize]
+        klGradients = calculateKLGradient(replayMemory.expMeanVector[miniBatchExpIds,:], replayMemory.expSdevVector[miniBatchExpIds,:], replayMemory.curMeanVector[miniBatchExpIds,:], replayMemory.curSdevVector[miniBatchExpIds,:])
 
-    episodeId = replayMemory.episodeIdVector[expId]
-    curId = expId
-    while(curId >= 0 and replayMemory.episodeIdVector[curId] == episodeId):
-        reward = replayMemory.importanceWeightVector[curId] * replayMemory.rewardScalingFactor
-        stateValue = replayMemory.stateValueVector[curId]
-        impportanceWeight = replayMemory.importanceWeightVector[curId]
-        truncatedImportanceWeight = min(1., importanceWeight)
-        retraceValue = stateValue + truncatedImportanceWeight * (reward + discountFactor * retraceValue - stateValue);
-        replayMemory.retraceValueVector[expId] = retraceValue
-        curId -= 1
+        vracerGradient[1:] += (1. - offPolicyREFERBeta) * np.mean(klGradients, axis=0)
 
-    # Update Value-Policy Network
-    
-    lossGradient = calculateLossGradient(replayMemory.stateValueVector[miniBatchExpIds],replayMemory.retraceValueVector[miniBatchExpIds])
-    print(lossGradient)
+        # Update Value-Policy Network
+        for grad in gradOutputWeights[-2*(actionSpace+1)]:
+            grad = grad * sum(vracerGradient)
 
-    importanceWeightGradients = calculateImportanceWeightGradient(replayMemory.actionVector[miniBatchExpIds,:], replayMemory.expMeanVector[miniBatchExpIds,:], replayMemory.expSdevVector[miniBatchExpIds,:], replayMemory.curMeanVector[miniBatchExpIds,:], replayMemory.curSdevVector[miniBatchExpIds,:], replayMemory.importanceWeightVector[miniBatchExpIds])
-    
-    klGradients = calculateKLGradient(replayMemory.expMeanVector[miniBatchExpIds,:], replayMemory.expSdevVector[miniBatchExpIds,:], replayMemory.curMeanVector[miniBatchExpIds,:], replayMemory.curSdevVector[miniBatchExpIds,:])
-
-
-    klGradMultiplier = -(1. - offPolicyREFERBeta)
-    policyGradient = np.mean(offPolicyREFERBeta * importanceWeightGradients * replayMemory.isOnPolicyVector[miniBatchExpIds][:, np.newaxis] + klGradMultiplier * klGradients, axis=0)
-    print(policyGradient)
-    
-    # Update variables
-    policyUpdateCount += 1
+        for outIdx, grad in enumerate(vracerGradient):
+            gradOutputWeights[-2*(actionSpace+1)+2*outIdx] = grad*gradOutputWeights[-2*(actionSpace+1)+2*outIdx] 
+            gradOutputWeights[-2*(actionSpace+1)+2*outIdx+1] = grad*gradOutputWeights[-2*(actionSpace+1)+2*outIdx+1] 
+        
+        policyUpdateCount += 1
+        optimizer.apply_gradients(zip(gradOutputWeights, valuePolicyNetwork.trainable_variables))
+        
+    # Update Variables
     offPolicyCurrentCutOff = offPolicyCutOff / (1. + offPolicyAnnealingRate * policyUpdateCount)
     offPolicyRatio = replayMemory.offPolicyCount / replayMemory.size
-    episode_history.append(cumulativeReward)
     currentLearningRate = learningRate / (1. + offPolicyAnnealingRate * policyUpdateCount)
 
     if offPolicyRatio > offPolicyTarget:
@@ -219,12 +238,7 @@ for episodeId in range(num_episodes):
         offPolicyREFERBeta = (1. - currentLearningRate) * offPolicyREFERBeta + currentLearningRate
 
 
-    # Print output
-
-    print("Episode: {}, Number of Steps : {}, Cumulative reward: {:0.3f}".format(episodeId, steps, cumulativeReward))
+    # Print Summary
+    avgPast100 = np.mean(episodeHistory[-100:])
+    print("Episode: {}, Number of Steps : {}, Cumulative reward: {:0.3f} (Avg. {:0.3f}".format(episodeId, steps, cumulativeReward, avgPast100))
     print("Total Experiences: {}\nCurrent Learning Rate {}\nOff Policy Ratio {:0.3f}\nOff-Policy Ref-ER Beta {}\n Reward Scaling Factor {:0.3f}".format(replayMemory.size, currentLearningRate, offPolicyRatio, offPolicyREFERBeta, replayMemory.rewardScalingFactor))
-    #print(episode_history[-10:])
-    
-    if np.mean(episode_history[-100:]) > 90 and len(episode_history) >= 101:
-        print("****************Solved***************")
-        print("Mean cumulative reward over 100 episodes:{:0.2f}" .format(np.mean(episode_history[-100:])))
