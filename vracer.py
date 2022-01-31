@@ -150,6 +150,7 @@ class Vracer:
                 self.replayMemory.curSdevVector[miniBatchExpIds] = curSdevs
                 self.replayMemory.stateValueVector[miniBatchExpIds] = stateValues
                 self.replayMemory.importanceWeightVector[miniBatchExpIds] = importanceWeights
+                self.replayMemory.truncatedImportanceWeightVector[miniBatchExpIds] = np.minimum(np.ones(self.miniBatchSize), importanceWeights)
                  
                 retraceMiniBatch = [miniBatchExpIds[-1]]
                 
@@ -174,9 +175,7 @@ class Vracer:
                     while(self.replayMemory.episodeIdVector[curId] == expEpisodeId):
                         reward = self.replayMemory.getScaledReward(curId)
                         stateValue = self.replayMemory.stateValueVector[curId]
-                        importanceWeight = self.replayMemory.importanceWeightVector[curId]
-                        truncatedImportanceWeight = min(1., importanceWeight)
-                        retraceValue = stateValue + truncatedImportanceWeight * (reward + self.discountFactor * retraceValue - stateValue);
+                        retraceValue = stateValue + self.replayMemory.truncatedImportanceWeightVector[curId] * (reward + self.discountFactor * retraceValue - stateValue);
                         self.replayMemory.retraceValueVector[curId] = retraceValue
                         curId = (curId-1)%self.replayMemory.size
                 

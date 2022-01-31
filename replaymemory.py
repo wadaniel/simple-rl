@@ -19,6 +19,7 @@ class ReplayMemory:
         self.episodeIdVector = np.zeros(self.memorySize, dtype=np.float32)
         self.isOnPolicyVector = np.zeros(self.memorySize, dtype=np.float32)
         self.importanceWeightVector = np.zeros(self.memorySize, dtype=np.float32)
+        self.truncatedImportanceWeightVector = np.zeros(self.memorySize, dtype=np.float32)
         self.retraceValueVector = np.zeros(self.memorySize, dtype=np.float32)
         self.expMeanVector = np.zeros((self.memorySize, self.actionDim), dtype=np.float32)
         self.expSdevVector = np.zeros((self.memorySize, self.actionDim), dtype=np.float32)
@@ -34,7 +35,7 @@ class ReplayMemory:
         self.rewardScalingFactor = 1.
         self.totalExperiences = 0
 
-    def store(self, state, action, reward, isTerminal, stateValue, mean, sdev, retraceValue, isOnPolicy, importanceWeight):
+    def store(self, state, action, reward, isTerminal, stateValue, mean, sdev, retraceValue):
 
         if(self.size == self.memorySize):
             self.offPolicyCount -= (self.isOnPolicyVector[self.currentIndex] == 0)
@@ -47,14 +48,14 @@ class ReplayMemory:
         self.episodeIdVector[self.currentIndex] = self.episodeId
         self.stateValueVector[self.currentIndex] = stateValue
         self.retraceValueVector[self.currentIndex] = retraceValue
-        self.isOnPolicyVector[self.currentIndex] = isOnPolicy
-        self.importanceWeightVector[self.currentIndex] = importanceWeight
+        self.isOnPolicyVector[self.currentIndex] = True
+        self.importanceWeightVector[self.currentIndex] = 1.
+        self.truncatedImportanceWeightVector[self.currentIndex] = 1.
         self.curMeanVector[self.currentIndex,:] = mean
         self.curSdevVector[self.currentIndex,:] = sdev
         self.expMeanVector[self.currentIndex,:] = mean
         self.expSdevVector[self.currentIndex,:] = sdev
 
-        self.offPolicyCount += (isOnPolicy == False)
         self.sumSquaredReward += reward*reward
 
         self.totalExperiences += 1
@@ -79,7 +80,7 @@ class ReplayMemory:
         for idx, experience in enumerate(episode):
             state, action, reward, stateValue, mean, sdev = experience
             isTerminal = (idx == len(episode) - 1)
-            self.store(state, action, reward, isTerminal, stateValue, mean, sdev, retraceValues[idx], True, 1.0)
+            self.store(state, action, reward, isTerminal, stateValue, mean, sdev, retraceValues[idx])
 
         self.episodeId += 1
         self.rewardScalingFactor = np.sqrt(self.size/(self.sumSquaredReward+1e-12))
@@ -95,8 +96,7 @@ class ReplayMemory:
                 retV = self.stateValueVector[expId]
             else:
                 reward = self.getScaledReward(expId)
-                truncatedImportanceWeight = min(1., self.importanceWeightVector[expId])
-                retV = self.stateValueVector[expId] + truncatedImportanceWeight * (reward + self.discountFactor * retV - self.stateValueVector[expId])
+                retV = self.stateValueVector[expId] + self.truncatedImportanceWeightVector[expId] * (reward + self.discountFactor * retV - self.stateValueVector[expId])
             
             self.retraceValueVector[expId] = retV
     

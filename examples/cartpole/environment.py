@@ -5,7 +5,7 @@ sys.path.append('../../') # path to vracer
 
 from vracer import *
 
-numEpisodes = 1000
+numEpisodes = 100000
 
 # Init cartpole
 from cartpole import *
