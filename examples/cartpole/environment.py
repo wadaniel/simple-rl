@@ -16,7 +16,7 @@ stateSpace = cart.stateSpace
 actionSpace = cart.actionSpace
 
 # Initialize Vracer
-vracer = Vracer(stateSpace, actionSpace, learningRate=0.0001, miniBatchSize=32, experienceReplaySize=10000, hiddenLayers=[32, 32])
+vracer = Vracer(stateSpace, actionSpace, learningRate=0.001, miniBatchSize=32, experienceReplaySize=10000, hiddenLayers=[32, 32])
 
 rewardHistory = []
 
