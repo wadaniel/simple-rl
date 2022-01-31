@@ -32,6 +32,7 @@ class ReplayMemory:
         self.offPolicyCount = 0
         self.sumSquaredReward = 0
         self.rewardScalingFactor = 1.
+        self.totalExperiences = 0
 
     def store(self, state, action, reward, isTerminal, stateValue, mean, sdev, retraceValue, isOnPolicy, importanceWeight):
 
@@ -56,7 +57,8 @@ class ReplayMemory:
         self.offPolicyCount += (isOnPolicy == False)
         self.sumSquaredReward += reward*reward
 
-        self.size = min(self.size+1, self.memorySize)
+        self.totalExperiences += 1
+        self.size = min(self.totalExperiences, self.memorySize)
         self.currentIndex = (self.currentIndex + 1) % self.memorySize
 
     def sample(self):

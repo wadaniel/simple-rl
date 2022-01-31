@@ -98,7 +98,7 @@ class Vracer:
 
         # Exit during exploration phase  
         if self.replayMemory.size < self.experienceReplayStartSize:
-            print("[VRACER] Collecting experiences ({:.2f}%/{:.2f}%)".format(self.replayMemory.size/self.replayMemory.memorySize*100, self.experienceReplayStartSize/self.replayMemory.memorySize*100))
+            print("[VRACER] Filling replay memory with experiences before training.. ({:.2f}%/{:.2f}%)".format(self.replayMemory.size/self.replayMemory.memorySize*100, self.experienceReplayStartSize/self.replayMemory.memorySize*100))
             return
  
         # Measure update time
@@ -213,7 +213,7 @@ class Vracer:
         # Measure update time
         end = time.time()
 
-        print("[VRACER] Total Experiences: {}\n[VRACER] Current Learning Rate {}\n[VRACER] Off Policy Ratio {:0.3f}\n[VRACER] Off-Policy Ref-ER Beta {}\n[VRACER] Reward Scaling Factor {:0.3f}\n[VRACER] Updates Per Sec: {:0.3f}".format(self.replayMemory.size, self.currentLearningRate, self.offPolicyRatio, self.offPolicyREFERBeta, self.replayMemory.rewardScalingFactor, numUpdates/(end-start)))
+        print("[VRACER] Total Experiences: {}\n[VRACER] Current Learning Rate {}\n[VRACER] Off Policy Ratio {:0.3f}\n[VRACER] Off-Policy Ref-ER Beta {}\n[VRACER] Reward Scaling Factor {:0.3f}\n[VRACER] Updates Per Sec: {:0.3f}".format(self.replayMemory.totalExperiences, self.currentLearningRate, self.offPolicyRatio, self.offPolicyREFERBeta, self.replayMemory.rewardScalingFactor, numUpdates/(end-start)))
 
     def calculateLoss(self, valueMeanSigmas, Vtbc, importanceWeights, offPgDiff, isOnPolicy, expMeans, expSdevs):
         stateValue = valueMeanSigmas[:,0]

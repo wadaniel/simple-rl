@@ -16,7 +16,7 @@ stateSpace = cart.stateSpace
 actionSpace = cart.actionSpace
 
 # Initialize Vracer
-vracer = Vracer(stateSpace, actionSpace, miniBatchSize=32, experienceReplaySize=10000, hiddenLayers=[32, 32])
+vracer = Vracer(stateSpace, actionSpace, learningRate=0.0001, miniBatchSize=32, experienceReplaySize=10000, hiddenLayers=[32, 32])
 
 rewardHistory = []
 
@@ -36,7 +36,7 @@ for episodeId in range(numEpisodes):
   
     episode = []
 
-    while (not done):
+    while (not done and steps < 500):
  
             # Evaluate policy on current state
             action = vracer.getAction(state)
@@ -60,3 +60,6 @@ for episodeId in range(numEpisodes):
     rewardHistory.append(cumulativeReward)
     rollingAvg = np.mean(rewardHistory[-100:])
     print("\nEpisode: {}, Number of Steps : {}, Cumulative reward: {:0.3f} (Avg. {:0.3f})".format(episodeId, steps, cumulativeReward, rollingAvg))
+
+    if rollingAvg > 490:
+        print("*********************Solved********************")
