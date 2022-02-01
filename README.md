@@ -13,7 +13,7 @@ pip install -r requirements.txt
 ```
 simple-rl
 │   README.md
-│   RErequirements.txt
+│   REquirements.txt
 │   replaymemory.py
 │   vracer.py
 |
