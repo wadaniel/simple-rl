@@ -156,8 +156,6 @@ class Vracer:
                 tforward += (end0-start0)
                 start1 = time.time()
 
-                ############################## SLOW ###########################
-                
                 episodeIds = self.replayMemory.episodeIdVector[miniBatchExpIds]
                 idMisMatch = episodeIds[:-1] != episodeIds[1:]
                 idMisMatch = np.append(idMisMatch, 1)
@@ -165,32 +163,8 @@ class Vracer:
                 # Find retrace mini-batch
                 retraceMiniBatch = miniBatchExpIds[idMisMatch == 1]
 
-                # Update retrace values in unique episodes
-                for expId in retraceMiniBatch:
-
-                    expEpisodePos       = self.replayMemory.episodePosVector[expId]
-                    episodeIdxs         = np.arange(expId-expEpisodePos, expId+1, dtype=int)%self.replayMemory.size
-
-                    # Extract episode values
-                    episodeRewards      = self.replayMemory.getScaledReward(episodeIdxs)
-                    episodeTrIWs        = self.replayMemory.truncatedImportanceWeightVector[episodeIdxs]
-                    episodeStateValues  = self.replayMemory.stateValueVector[episodeIdxs]
-                    episodeRetraceValues = episodeStateValues + episodeTrIWs*(episodeRewards-episodeStateValues)
-   
-                    # Init retrace value fir the latest sampled experience in an episode
-                    if (self.replayMemory.isTerminalVector[expId] == 1):
-                        episodeRetraceValues[-1] += episodeStateValues[-1]
-                    else:
-                        episodeRetraceValues[-1] += episodeTrIWs[-1]*self.discountFactor*self.replayMemory.retraceValueVector[(expId+1)%self.replayMemory.size]
-
-                    # Backward update retrace value through episode
-                    for idx in range(expEpisodePos):
-                        episodeRetraceValues[-idx-2] += episodeTrIWs[-idx-2]*self.discountFactor*episodeRetraceValues[-idx-1]
-                    
-                    # Update retrace value of episode
-                    self.replayMemory.retraceValueVector[episodeIdxs] = episodeRetraceValues
-
-                ###############################################################
+                # Update retrace values in episodes 
+                [ self.__updateRetraceValues(expId) for expId in retraceMiniBatch ] #TODO: this updates are expensive
                 
                 end1 = time.time()
                 tretrace += (end1-start1)
@@ -273,3 +247,29 @@ class Vracer:
         logpCurPolicy = -0.5*((action-curMean)/curSdev)**2 - tf.math.log(curSdev)
         logImportanceWeight = tf.reduce_sum(logpCurPolicy - logpExpPolicy, 1)
         return tf.math.exp(logImportanceWeight)
+
+    def __updateRetraceValues(self, expId):
+
+        expEpisodePos       = self.replayMemory.episodePosVector[expId]
+        episodeIdxs         = np.arange(expId-expEpisodePos, expId+1, dtype=int)%self.replayMemory.size
+
+        # Extract episode values
+        episodeRewards      = self.replayMemory.getScaledReward(episodeIdxs)
+        episodeTrIWs        = self.replayMemory.truncatedImportanceWeightVector[episodeIdxs]
+        episodeStateValues  = self.replayMemory.stateValueVector[episodeIdxs]
+        episodeRetraceValues = episodeStateValues + episodeTrIWs*(episodeRewards-episodeStateValues)
+
+        # Init retrace value fir the latest sampled experience in an episode
+        if (self.replayMemory.isTerminalVector[expId] == 1):
+            episodeRetraceValues[-1] += episodeStateValues[-1]
+        else:
+            episodeRetraceValues[-1] += episodeTrIWs[-1]*self.discountFactor*self.replayMemory.retraceValueVector[(expId+1)%self.replayMemory.size]
+
+        # Backward update retrace value through episode
+        for idx in range(expEpisodePos):
+            episodeRetraceValues[-idx-2] += episodeTrIWs[-idx-2]*self.discountFactor*episodeRetraceValues[-idx-1]
+        
+        # Update retrace value of episode
+        self.replayMemory.retraceValueVector[episodeIdxs] = episodeRetraceValues
+
+

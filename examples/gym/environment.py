@@ -10,8 +10,8 @@ numEpisodes = 1000
 
 # Choose Gym environment
 import gym
-env = gym.envs.make("Pendulum-v1")  
-#env = gym.envs.make("MountainCarContinuous-v0") 
+#env = gym.envs.make("Pendulum-v1")  
+env = gym.envs.make("MountainCarContinuous-v0") 
 env.seed(42)
 
 # Dimension of state and action space
