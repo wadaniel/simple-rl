@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+import os
+#os.environ["CUDA_VISIBLE_DEVICES"] = "-1" # GPU may be slow
+
 import sys
 import numpy as np
 sys.path.append('../../') # path to vracer
@@ -61,5 +64,6 @@ for episodeId in range(numEpisodes):
     rollingAvg = np.mean(rewardHistory[-100:])
     print("\nEpisode: {}, Number of Steps : {}, Cumulative reward: {:0.3f} (Avg. {:0.3f})".format(episodeId, steps, cumulativeReward, rollingAvg))
 
-    if rollingAvg > 490:
+    if cumulativeReward == 500.:
         print("*********************Solved********************")
+        sys.exit()
