@@ -27,3 +27,9 @@ simple-rl
         │   environment.py
 
 ```
+
+## GPU usage
+Tnesorflow may access the GPU and slow down execution, avoid this with
+```
+export CUDA_VISIBLE_DEVICES=''
+```

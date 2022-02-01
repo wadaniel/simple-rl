@@ -10,8 +10,8 @@ numEpisodes = 1000
 
 # Choose Gym environment
 import gym
-#env = gym.envs.make("Pendulum-v1")  
-env = gym.envs.make("MountainCarContinuous-v0") 
+env = gym.envs.make("Pendulum-v1")  
+#env = gym.envs.make("MountainCarContinuous-v0") 
 env.seed(42)
 
 # Dimension of state and action space
@@ -19,7 +19,7 @@ stateSpace = len(env.observation_space.high)
 actionSpace = len(env.action_space.high)
 
 # Initialize Vracer
-vracer = Vracer(stateSpace, actionSpace)
+vracer = Vracer(stateSpace, actionSpace, miniBatchSize=32, hiddenLayers=[32,32])
 
 rewardHistory = []
 

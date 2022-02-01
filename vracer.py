@@ -14,18 +14,22 @@ class Vracer:
         self.actionSpace = actionSpace
 
         # Agent Configuration
-        self.experienceReplaySize       = kwargs.get('experienceReplaySize', 32768)
-        self.miniBatchSize              = kwargs.get('miniBatchSize', 128)
-        self.hiddenLayers               = kwargs.get('hiddenLayers', [128, 128])
-        self.activationFunction         = kwargs.get('activationFunction', 'tanh')
-        self.learningRate               = kwargs.get('learningRate', 0.001)
-        self.discountFactor             = kwargs.get('discountFactor', 0.99)
-        self.offPolicyCutOff            = kwargs.get('offPolicyCutOff', 4.)
-        self.offPolicyTarget            = kwargs.get('offPolicyTarget', .1)
-        self.offPolicyREFERBeta         = kwargs.get('offPolicyREFERBeta', .3)
-        self.offPolicyAnnealingRate     = kwargs.get('offPolicyAnnealingRate', 5e-7)
-        self.policyUpdatesPerExperience = kwargs.get('policyUpdatesPerExperience', 1.)
-        self.verbose                    = kwargs.get('verbose', 0)
+        self.experienceReplaySize       = kwargs.pop('experienceReplaySize', 32768)
+        self.miniBatchSize              = kwargs.pop('miniBatchSize', 128)
+        self.hiddenLayers               = kwargs.pop('hiddenLayers', [128, 128])
+        self.activationFunction         = kwargs.pop('activationFunction', 'tanh')
+        self.learningRate               = kwargs.pop('learningRate', 0.001)
+        self.discountFactor             = kwargs.pop('discountFactor', 0.99)
+        self.offPolicyCutOff            = kwargs.pop('offPolicyCutOff', 4.)
+        self.offPolicyTarget            = kwargs.pop('offPolicyTarget', .1)
+        self.offPolicyREFERBeta         = kwargs.pop('offPolicyREFERBeta', .3)
+        self.offPolicyAnnealingRate     = kwargs.pop('offPolicyAnnealingRate', 5e-7)
+        self.policyUpdatesPerExperience = kwargs.pop('policyUpdatesPerExperience', 1.)
+        self.verbose                    = kwargs.pop('verbose', 0)
+
+        # Check for unused args
+        if kwargs:
+            raise TypeError('Unepxected kwargs provided: %s' % list(kwargs.keys()))
 
         # ReplayMemory
         self.replayMemory = ReplayMemory(self.experienceReplaySize, self.miniBatchSize, self.stateSpace, self.actionSpace, self.discountFactor)
