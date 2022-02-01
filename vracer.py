@@ -156,6 +156,8 @@ class Vracer:
                 tforward += (end0-start0)
                 start1 = time.time()
 
+                ############################## SLOW ###########################
+                
                 episodeIds = self.replayMemory.episodeIdVector[miniBatchExpIds]
                 idMisMatch = episodeIds[:-1] != episodeIds[1:]
                 idMisMatch = np.append(idMisMatch, 1)
@@ -188,6 +190,8 @@ class Vracer:
                     # Update retrace value of episode
                     self.replayMemory.retraceValueVector[episodeIdxs] = episodeRetraceValues
 
+                ###############################################################
+                
                 end1 = time.time()
                 tretrace += (end1-start1)
                 start2 = time.time()
