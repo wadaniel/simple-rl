@@ -41,37 +41,25 @@ class Vracer:
         self.currentEpisodeMeansAndSdevs = []
   
         # Neural Network and Optimizer
-        self.initValuePolicyNetwork(self.stateSpace, self.actionSpace, self.hiddenLayers)
+        self.__initValuePolicyNetwork(self.stateSpace, self.actionSpace, self.hiddenLayers)
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.currentLearningRate)
    
-
-    def initValuePolicyNetwork(self, stateSpace, actionSpace, hiddenLayers):
-    
-        inputs = tf.keras.Input(shape=(stateSpace,), dtype='float32')
-        for i, size in enumerate(hiddenLayers):
-            if i == 0:
-                x = tf.keras.layers.Dense(size, kernel_initializer='glorot_uniform', activation=self.activationFunction, dtype='float32')(inputs)
-            else:
-                x = tf.keras.layers.Dense(size, kernel_initializer='glorot_uniform', activation=self.activationFunction, dtype='float32')(x)
-
-
-        scaledGlorot = lambda shape, dtype : 0.001*tf.keras.initializers.GlorotNormal()(shape)
-
-        value = tf.keras.layers.Dense(1, kernel_initializer=scaledGlorot, activation = "linear", dtype='float32')(x)
-        mean  = tf.keras.layers.Dense(actionSpace, kernel_initializer=scaledGlorot, activation = "linear", dtype='float32')(x)
-        sigma = tf.keras.layers.Dense(actionSpace, kernel_initializer=scaledGlorot, activation = "softplus", dtype='float32')(x)
-
-        outputs = tf.keras.layers.Concatenate()([value, mean, sigma])
-        self.valuePolicyNetwork = tf.keras.Model(inputs=inputs, outputs=outputs, name='valuePolicyNetwork')
+    def getValue(self, state):
+        valueMeanSigma = self.valuePolicyNetwork(tf.convert_to_tensor([state]))
+        return valueMeanSigma[0,0]
  
+    def getPolicy(self, state):
+        valueMeanSigma = self.valuePolicyNetwork(tf.convert_to_tensor([state]))
+        return valueMeanSigma[0,1:self.actionSpace+1], valueMeanSigma[0, 1:self.actionSpace:]
+
     def getAction(self, state):
             
         # Evaluate policy on current state
-        value_mean_sigma = self.valuePolicyNetwork(tf.convert_to_tensor([state]))
+        valueMeanSigma = self.valuePolicyNetwork(tf.convert_to_tensor([state]))
             
-        value = value_mean_sigma[0,0]
-        mean = value_mean_sigma[0,1:self.actionSpace+1]
-        sdev = value_mean_sigma[0,1+self.actionSpace:]
+        value = valueMeanSigma[0,0]
+        mean = valueMeanSigma[0,1:self.actionSpace+1]
+        sdev = valueMeanSigma[0,1+self.actionSpace:]
         
         # Collect mean and sigmas for later use
         self.currentEpisodeMeansAndSdevs.append((value,mean,sdev))
@@ -134,7 +122,7 @@ class Vracer:
          
                 # Calculate importance weigts and check on policy
                 isExpOnPolicy = self.replayMemory.isOnPolicyVector[miniBatchExpIds]
-                importanceWeights = self.calculateImportanceWeight(actions, expMeans, expSdevs, curMeans, curSdevs)
+                importanceWeights = self.__calculateImportanceWeight(actions, expMeans, expSdevs, curMeans, curSdevs)
                 isCurOnPolicy = tf.logical_and(tf.less(importanceWeights, self.offPolicyCurrentCutOff), tf.greater(importanceWeights, 1./self.offPolicyCurrentCutOff))
                 
                 # Calcuate off policy count and update is on policy
@@ -186,7 +174,7 @@ class Vracer:
                 advantage = self.replayMemory.getScaledReward(miniBatchExpIds) + self.discountFactor * (self.replayMemory.isTerminalVector[miniBatchExpIds] == False) * self.replayMemory.retraceValueVector[(miniBatchExpIds+1)%self.replayMemory.size] - self.replayMemory.stateValueVector[miniBatchExpIds]
 
                 # Calculate Loss
-                loss = self.calculateLoss(valueMeanSigmas, Vtbcs, importanceWeights, advantage, isCurOnPolicy, expMeans, expSdevs)
+                loss = self.__calculateLoss(valueMeanSigmas, Vtbcs, importanceWeights, advantage, isCurOnPolicy, expMeans, expSdevs)
         
                 # Calculate gradient of loss
                 gradLoss = tape.gradient(loss, self.valuePolicyNetwork.trainable_variables)
@@ -213,8 +201,27 @@ class Vracer:
         end = time.time()
 
         print("[VRACER] Total Experiences: {}\n[VRACER] Current Learning Rate {}\n[VRACER] Off Policy Ratio {:0.3f}\n[VRACER] Off-Policy Ref-ER Beta {}\n[VRACER] Reward Scaling Factor {:0.3f}\n[VRACER] Updates Per Sec: {:0.3f}".format(self.replayMemory.totalExperiences, self.currentLearningRate, self.offPolicyRatio, self.offPolicyREFERBeta, self.replayMemory.rewardScalingFactor, numUpdates/(end-start)))
+    
+    def __initValuePolicyNetwork(self, stateSpace, actionSpace, hiddenLayers):
+    
+        inputs = tf.keras.Input(shape=(stateSpace,), dtype='float32')
+        for i, size in enumerate(hiddenLayers):
+            if i == 0:
+                x = tf.keras.layers.Dense(size, kernel_initializer='glorot_uniform', activation=self.activationFunction, dtype='float32')(inputs)
+            else:
+                x = tf.keras.layers.Dense(size, kernel_initializer='glorot_uniform', activation=self.activationFunction, dtype='float32')(x)
 
-    def calculateLoss(self, valueMeanSigmas, Vtbc, importanceWeights, offPgDiff, isOnPolicy, expMeans, expSdevs):
+
+        scaledGlorot = lambda shape, dtype : 0.001*tf.keras.initializers.GlorotNormal()(shape)
+
+        value = tf.keras.layers.Dense(1, kernel_initializer=scaledGlorot, activation = "linear", dtype='float32')(x)
+        mean  = tf.keras.layers.Dense(actionSpace, kernel_initializer=scaledGlorot, activation = "linear", dtype='float32')(x)
+        sigma = tf.keras.layers.Dense(actionSpace, kernel_initializer=scaledGlorot, activation = "softplus", dtype='float32')(x)
+
+        outputs = tf.keras.layers.Concatenate()([value, mean, sigma])
+        self.valuePolicyNetwork = tf.keras.Model(inputs=inputs, outputs=outputs, name='valuePolicyNetwork')
+ 
+    def __calculateLoss(self, valueMeanSigmas, Vtbc, importanceWeights, offPgDiff, isOnPolicy, expMeans, expSdevs):
         stateValue = valueMeanSigmas[:,0]
         curMeans = valueMeanSigmas[:,1]
         curSdevs = valueMeanSigmas[:,2]
@@ -223,7 +230,7 @@ class Vracer:
         expKLdiv = 0.5*tf.math.reduce_mean(2*tf.math.log(curSdevs/expSdevs) + (expSdevs/curSdevs)**2 + ((curMeans - expMeans) / curSdevs)**2)
         return valueLoss + self.offPolicyREFERBeta * negAdvantage + (1.- self.offPolicyREFERBeta) * expKLdiv
 
-    def calculateImportanceWeight(self, action, expMean, expSdev, curMean, curSdev):
+    def __calculateImportanceWeight(self, action, expMean, expSdev, curMean, curSdev):
         logpExpPolicy = -0.5*((action-expMean)/expSdev)**2 - tf.math.log(expSdev)
         logpCurPolicy = -0.5*((action-curMean)/curSdev)**2 - tf.math.log(curSdev)
         logImportanceWeight = tf.reduce_sum(logpCurPolicy - logpExpPolicy, 1)

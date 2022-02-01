@@ -35,7 +35,48 @@ class ReplayMemory:
         self.rewardScalingFactor = 1.
         self.totalExperiences = 0
 
-    def store(self, state, action, reward, isTerminal, stateValue, mean, sdev, retraceValue):
+    def sample(self):
+        if self.size <  self.miniBatchSize:
+            return []
+
+        sampleIndexes = np.floor(np.random.random((self.miniBatchSize,))*self.size).astype(int)
+        return np.sort(sampleIndexes)
+
+    def processAndStoreEpisode(self, episode):
+        retV = 0.
+        retraceValues = np.zeros(len(episode))
+        for idx, experience in enumerate(reversed(episode)):
+            reward = experience[2]
+            retV = self.discountFactor * retV + self.rewardScalingFactor*reward
+            retraceValues[-idx] = retV
+    
+        for idx, experience in enumerate(episode):
+            state, action, reward, stateValue, mean, sdev = experience
+            isTerminal = (idx == len(episode) - 1)
+            self.__store(state, action, reward, isTerminal, stateValue, mean, sdev, retraceValues[idx])
+
+        self.episodeId += 1
+        self.rewardScalingFactor = np.sqrt(self.size/(self.sumSquaredReward+1e-12))
+
+    def updateAllRetraceValues(self):
+        if self.size == 0:
+            return # nothing to do
+
+        # backward update retrace values
+        for idx in range(1, self.size+1):
+            expId = (self.currentIndex-idx)%self.size
+            if self.isTerminalVector[expId] == True:
+                retV = self.stateValueVector[expId]
+            else:
+                reward = self.getScaledReward(expId)
+                retV = self.stateValueVector[expId] + self.truncatedImportanceWeightVector[expId] * (reward + self.discountFactor * retV - self.stateValueVector[expId])
+            
+            self.retraceValueVector[expId] = retV
+    
+    def getScaledReward(self, expId):
+        return self.rewardVector[expId]*self.rewardScalingFactor 
+    
+    def __store(self, state, action, reward, isTerminal, stateValue, mean, sdev, retraceValue):
 
         if(self.size == self.memorySize):
             self.offPolicyCount -= (self.isOnPolicyVector[self.currentIndex] == 0)
@@ -61,44 +102,3 @@ class ReplayMemory:
         self.totalExperiences += 1
         self.size = min(self.totalExperiences, self.memorySize)
         self.currentIndex = (self.currentIndex + 1) % self.memorySize
-
-    def sample(self):
-        if self.size <  self.miniBatchSize:
-            return []
-
-        sampleIndexes = np.floor(np.random.random((self.miniBatchSize,))*self.size).astype(int)
-        return np.sort(sampleIndexes)
-
-    def processAndStoreEpisode(self, episode):
-        retV = 0.
-        retraceValues = np.zeros(len(episode))
-        for idx, experience in enumerate(reversed(episode)):
-            reward = experience[2]
-            retV = self.discountFactor * retV + self.rewardScalingFactor*reward
-            retraceValues[-idx] = retV
-    
-        for idx, experience in enumerate(episode):
-            state, action, reward, stateValue, mean, sdev = experience
-            isTerminal = (idx == len(episode) - 1)
-            self.store(state, action, reward, isTerminal, stateValue, mean, sdev, retraceValues[idx])
-
-        self.episodeId += 1
-        self.rewardScalingFactor = np.sqrt(self.size/(self.sumSquaredReward+1e-12))
-
-    def updateAllRetraceValues(self):
-        if self.size == 0:
-            return # nothing to do
-
-        # backward update retrace values
-        for idx in range(1, self.size+1):
-            expId = (self.currentIndex-idx)%self.size
-            if self.isTerminalVector[expId] == True:
-                retV = self.stateValueVector[expId]
-            else:
-                reward = self.getScaledReward(expId)
-                retV = self.stateValueVector[expId] + self.truncatedImportanceWeightVector[expId] * (reward + self.discountFactor * retV - self.stateValueVector[expId])
-            
-            self.retraceValueVector[expId] = retV
-    
-    def getScaledReward(self, expId):
-        return self.rewardVector[expId]*self.rewardScalingFactor

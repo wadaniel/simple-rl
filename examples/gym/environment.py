@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1" # GPU may be slow
 
 import sys
 import numpy as np
