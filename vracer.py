@@ -94,6 +94,10 @@ class Vracer:
             return
  
         # Measure update time
+        tforward = 0.
+        tretrace = 0.
+        tgradient = 0.
+
         start = time.time()
 
         # Reset retrace values with scaled reward   
@@ -112,6 +116,8 @@ class Vracer:
             with tf.GradientTape(watch_accessed_variables=False) as tape:
                 tape.watch(self.valuePolicyNetwork.trainable_variables)
                 
+                start0 = time.time()
+                
                 # Forward mini-batch 
                 states = self.replayMemory.stateVector[miniBatchExpIds,:]
                 valueMeanSigmas = self.valuePolicyNetwork(tf.convert_to_tensor(states))
@@ -124,52 +130,67 @@ class Vracer:
                 curMeans = valueMeanSigmas[:,1:self.actionSpace+1]
                 curSdevs = valueMeanSigmas[:,1+self.actionSpace:]
          
-                # Calculate importance weigts and check on policy
+                # Calculate importance weigts and check on-policyness
                 isExpOnPolicy = self.replayMemory.isOnPolicyVector[miniBatchExpIds]
                 importanceWeights = self.__calculateImportanceWeight(actions, expMeans, expSdevs, curMeans, curSdevs)
                 isCurOnPolicy = tf.logical_and(tf.less(importanceWeights, self.offPolicyCurrentCutOff), tf.greater(importanceWeights, 1./self.offPolicyCurrentCutOff))
                 
-                # Calcuate off policy count and update is on policy
+                # Calcuate off policy count
                 for idx, expId in enumerate(miniBatchExpIds):
                     if self.replayMemory.isOnPolicyVector[expId] == True and isCurOnPolicy[idx] == False:
                             self.replayMemory.offPolicyCount += 1
                     elif self.replayMemory.isOnPolicyVector[expId] == False and isCurOnPolicy[idx] == True:
                             self.replayMemory.offPolicyCount -= 1
-                    self.replayMemory.isOnPolicyVector[expId] = isCurOnPolicy[idx]
           
-                # Update policy parameter, importance weight
+                # Update on-policyness
+                self.replayMemory.isOnPolicyVector[miniBatchExpIds] = isCurOnPolicy
+                
+                # Update policy parameter and importance weight
                 self.replayMemory.curMeanVector[miniBatchExpIds] = curMeans
                 self.replayMemory.curSdevVector[miniBatchExpIds] = curSdevs
                 self.replayMemory.stateValueVector[miniBatchExpIds] = stateValues
                 self.replayMemory.importanceWeightVector[miniBatchExpIds] = importanceWeights
                 self.replayMemory.truncatedImportanceWeightVector[miniBatchExpIds] = np.minimum(np.ones(self.miniBatchSize), importanceWeights)
                  
-                retraceMiniBatch = [miniBatchExpIds[-1]]
-                
+                end0 = time.time()
+                tforward += (end0-start0)
+                start1 = time.time()
+
+                episodeIds = self.replayMemory.episodeIdVector[miniBatchExpIds]
+                idMisMatch = episodeIds[:-1] != episodeIds[1:]
+                idMisMatch = np.append(idMisMatch, 1)
+
                 # Find retrace mini-batch
-                for i in range(1, len(miniBatchExpIds)):
-                    prevExpId = miniBatchExpIds[-i-1]
-                    if(self.replayMemory.episodeIdVector[expId] != self.replayMemory.episodeIdVector[prevExpId]):
-                        retraceMiniBatch.append(prevExpId)
+                retraceMiniBatch = miniBatchExpIds[idMisMatch == 1]
 
-                # Update retrace values
+                # Update retrace values in unique episodes
                 for expId in retraceMiniBatch:
-                    retraceValue = 0
+
+                    expEpisodePos       = self.replayMemory.episodePosVector[expId]
+                    episodeIdxs         = np.arange(expId-expEpisodePos, expId+1, dtype=int)%self.replayMemory.size
+
+                    # Extract episode values
+                    episodeRewards      = self.replayMemory.getScaledReward(episodeIdxs)
+                    episodeTrIWs        = self.replayMemory.truncatedImportanceWeightVector[episodeIdxs]
+                    episodeStateValues  = self.replayMemory.stateValueVector[episodeIdxs]
+                    episodeRetraceValues = episodeStateValues + episodeTrIWs*(episodeRewards-episodeStateValues)
+   
+                    # Init retrace value fir the latest sampled experience in an episode
                     if (self.replayMemory.isTerminalVector[expId] == 1):
-                        retraceValue = self.replayMemory.stateValueVector[expId]
+                        episodeRetraceValues[-1] += episodeStateValues[-1]
                     else:
-                        retraceValue = self.replayMemory.retraceValueVector[(expId+1)%self.replayMemory.size]
+                        episodeRetraceValues[-1] += episodeTrIWs[-1]*self.discountFactor*self.replayMemory.retraceValueVector[(expId+1)%self.replayMemory.size]
 
-                    curId = expId
-                    expEpisodeId = self.replayMemory.episodeIdVector[expId]
+                    # Backward update retrace value through episode
+                    for idx in range(expEpisodePos):
+                        episodeRetraceValues[-idx-2] += episodeTrIWs[-idx-2]*self.discountFactor*episodeRetraceValues[-idx-1]
+                    
+                    # Update retrace value of episode
+                    self.replayMemory.retraceValueVector[episodeIdxs] = episodeRetraceValues
 
-                    # Backward update episode
-                    while(self.replayMemory.episodeIdVector[curId] == expEpisodeId):
-                        reward = self.replayMemory.getScaledReward(curId)
-                        stateValue = self.replayMemory.stateValueVector[curId]
-                        retraceValue = stateValue + self.replayMemory.truncatedImportanceWeightVector[curId] * (reward + self.discountFactor * retraceValue - stateValue);
-                        self.replayMemory.retraceValueVector[curId] = retraceValue
-                        curId = (curId-1)%self.replayMemory.size
+                end1 = time.time()
+                tretrace += (end1-start1)
+                start2 = time.time()
                 
                 # Vtbcs
                 Vtbcs = self.replayMemory.retraceValueVector[miniBatchExpIds]
@@ -182,6 +203,9 @@ class Vracer:
         
                 # Calculate gradient of loss
                 gradLoss = tape.gradient(loss, self.valuePolicyNetwork.trainable_variables)
+
+                end2 = time.time()
+                tgradient += (end2-start2)
             
             self.policyUpdateCount += 1
             norm = tf.math.sqrt(sum([tf.math.reduce_sum(tf.math.square(g)) for g in gradLoss]))
@@ -190,7 +214,7 @@ class Vracer:
             self.optimizer.learning_rate = self.currentLearningRate
             self.optimizer.apply_gradients(zip(gradLoss, self.valuePolicyNetwork.trainable_variables))
             
-            # Update off policy ratio and beta
+            # Update off-policy ratio and beta
             self.offPolicyRatio = self.replayMemory.offPolicyCount / self.replayMemory.size
             if self.offPolicyRatio > self.offPolicyTarget:
                 self.offPolicyREFERBeta = (1. - self.currentLearningRate) * self.offPolicyREFERBeta
@@ -204,7 +228,13 @@ class Vracer:
         # Measure update time
         end = time.time()
 
-        print("[VRACER] Total Experiences: {}\n[VRACER] Current Learning Rate {}\n[VRACER] Off Policy Ratio {:0.3f}\n[VRACER] Off-Policy Ref-ER Beta {}\n[VRACER] Reward Scaling Factor {:0.3f}\n[VRACER] Updates Per Sec: {:0.3f}".format(self.replayMemory.totalExperiences, self.currentLearningRate, self.offPolicyRatio, self.offPolicyREFERBeta, self.replayMemory.rewardScalingFactor, numUpdates/(end-start)))
+        ttotal = end-start
+        pctForward = tforward/ttotal*100.
+        pctRetrace = tretrace/ttotal*100.
+        pctGradient = tgradient/ttotal*100.
+        
+
+        print("[VRACER] Total Experiences: {}\n[VRACER] Current Learning Rate {}\n[VRACER] Off Policy Ratio {:0.3f}\n[VRACER] Off-Policy Ref-ER Beta {}\n[VRACER] Reward Scaling Factor {:0.3f}\n[VRACER] Updates Per Sec: {:0.3f}\n[VRACER] Pct Forward {:0.1f}\n[VRACER] Pct Retrace {:0.1f}\n[VRACER] Pct Gradient {:0.1f}".format(self.replayMemory.totalExperiences, self.currentLearningRate, self.offPolicyRatio, self.offPolicyREFERBeta, self.replayMemory.rewardScalingFactor, numUpdates/(ttotal), pctForward, pctRetrace, pctGradient))
     
     def __initValuePolicyNetwork(self, stateSpace, actionSpace, hiddenLayers):
     

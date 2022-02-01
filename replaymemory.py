@@ -16,8 +16,9 @@ class ReplayMemory:
         self.actionVector = np.zeros((self.memorySize, self.actionDim), dtype=np.float32)
         self.rewardVector = np.zeros(self.memorySize, dtype=np.float32)
         self.isTerminalVector = np.zeros(self.memorySize, dtype=np.float32)
-        self.episodeIdVector = np.zeros(self.memorySize, dtype=np.float32)
-        self.isOnPolicyVector = np.zeros(self.memorySize, dtype=np.float32)
+        self.episodeIdVector = np.zeros(self.memorySize, dtype=np.int32)
+        self.episodePosVector = np.zeros(self.memorySize, dtype=np.int32)
+        self.isOnPolicyVector = np.zeros(self.memorySize, dtype=np.int32)
         self.importanceWeightVector = np.zeros(self.memorySize, dtype=np.float32)
         self.truncatedImportanceWeightVector = np.zeros(self.memorySize, dtype=np.float32)
         self.retraceValueVector = np.zeros(self.memorySize, dtype=np.float32)
@@ -53,7 +54,7 @@ class ReplayMemory:
         for idx, experience in enumerate(episode):
             state, action, reward, stateValue, mean, sdev = experience
             isTerminal = (idx == len(episode) - 1)
-            self.__store(state, action, reward, isTerminal, stateValue, mean, sdev, retraceValues[idx])
+            self.__store(idx, state, action, reward, isTerminal, stateValue, mean, sdev, retraceValues[idx])
 
         self.episodeId += 1
         self.rewardScalingFactor = np.sqrt(self.size/(self.sumSquaredReward+1e-12))
@@ -73,10 +74,10 @@ class ReplayMemory:
             
             self.retraceValueVector[expId] = retV
     
-    def getScaledReward(self, expId):
-        return self.rewardVector[expId]*self.rewardScalingFactor 
+    def getScaledReward(self, expIds):
+        return self.rewardScalingFactor*self.rewardVector[expIds]
     
-    def __store(self, state, action, reward, isTerminal, stateValue, mean, sdev, retraceValue):
+    def __store(self, pos, state, action, reward, isTerminal, stateValue, mean, sdev, retraceValue):
 
         if(self.size == self.memorySize):
             self.offPolicyCount -= (self.isOnPolicyVector[self.currentIndex] == 0)
@@ -87,6 +88,7 @@ class ReplayMemory:
         self.rewardVector[self.currentIndex] = reward
         self.isTerminalVector[self.currentIndex] = isTerminal
         self.episodeIdVector[self.currentIndex] = self.episodeId
+        self.episodePosVector[self.currentIndex] = pos
         self.stateValueVector[self.currentIndex] = stateValue
         self.retraceValueVector[self.currentIndex] = retraceValue
         self.isOnPolicyVector[self.currentIndex] = True
