@@ -18,7 +18,11 @@ actionSpace = cart.actionSpace
 
 # Initialize Vracer
 vracer = Vracer(stateSpace, actionSpace, learningRate=0.0001, miniBatchSize=128, experienceReplaySize=32768, hiddenLayers=[128, 128])
+#vracer = Vracer(stateSpace, actionSpace, learningRate=0.0001, miniBatchSize=128, experienceReplaySize=1000, hiddenLayers=[128, 128])
 
+# Statistics init
+maxEpisode = -1
+maxReward = -np.inf
 rewardHistory = []
 
 # Training loop
@@ -58,9 +62,13 @@ for episodeId in range(numEpisodes):
     vracer.train(episode)
 
     # Statistics
+    if cumulativeReward > maxReward:
+        maxEpisode = episodeId
+        maxReward = cumulativeReward 
+    
     rewardHistory.append(cumulativeReward)
     rollingAvg = np.mean(rewardHistory[-100:])
-    print("\nEpisode: {}, Number of Steps : {}, Cumulative reward: {:0.3f} (Avg. {:0.3f})".format(episodeId, steps, cumulativeReward, rollingAvg))
+    print("\nEpisode: {}, Number of Steps : {}, Cumulative reward: {:0.1f} (Avg. {:0.2f} / Max {:0.1f} at {})".format(episodeId, steps, cumulativeReward, rollingAvg, maxReward, maxEpisode))
 
     if cumulativeReward == 500.:
         print("*********************Solved********************")

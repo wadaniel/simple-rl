@@ -1,5 +1,6 @@
 import sys
 import numpy as np
+import scipy.signal as signal
 import tensorflow as tf
 
 from replaymemory import *
@@ -39,7 +40,7 @@ class Vracer:
         self.currentLearningRate        = self.learningRate
         self.policyUpdateCount          = 0
         self.offPolicyRatio             = 0.
-        self.offPolicyCurrentCutOff     = self. offPolicyCutOff
+        self.offPolicyCurrentCutOff     = self.offPolicyCutOff
         self.experienceReplayStartSize  = 0.5*self.experienceReplaySize
         self.episodeHistory             = []
         self.currentEpisodeMeansAndSdevs = []
@@ -135,16 +136,14 @@ class Vracer:
                 importanceWeights = self.__calculateImportanceWeight(actions, expMeans, expSdevs, curMeans, curSdevs)
                 isCurOnPolicy = tf.logical_and(tf.less(importanceWeights, self.offPolicyCurrentCutOff), tf.greater(importanceWeights, 1./self.offPolicyCurrentCutOff))
                 
-                # Calcuate off policy count
+                # Calcuate off policy count and update on-policyness
                 for idx, expId in enumerate(miniBatchExpIds):
                     if self.replayMemory.isOnPolicyVector[expId] == True and isCurOnPolicy[idx] == False:
                             self.replayMemory.offPolicyCount += 1
                     elif self.replayMemory.isOnPolicyVector[expId] == False and isCurOnPolicy[idx] == True:
                             self.replayMemory.offPolicyCount -= 1
+                    self.replayMemory.isOnPolicyVector[expId] = isCurOnPolicy[idx]
           
-                # Update on-policyness
-                self.replayMemory.isOnPolicyVector[miniBatchExpIds] = isCurOnPolicy
-                
                 # Update policy parameter and importance weight
                 self.replayMemory.curMeanVector[miniBatchExpIds] = curMeans
                 self.replayMemory.curSdevVector[miniBatchExpIds] = curSdevs
@@ -249,27 +248,33 @@ class Vracer:
         return tf.math.exp(logImportanceWeight)
 
     def __updateRetraceValues(self, expId):
+        
+        episodeId = self.replayMemory.episodeIdVector[expId]
+        episodePos = self.replayMemory.episodePosVector[expId]
+        episodeStart = (expId - episodePos)%self.replayMemory.size
+        
+        # Start id is not part of same episode
+        if (self.replayMemory.episodeIdVector[episodeStart] != episodeId):
+            episodeStart = min(np.argwhere(self.replayMemory.episodeIdVector == episodeId))
+            # Episode is split in RM
+            if (self.replayMemory.episodeIdVector[0] == episodeId and self.replayMemory.episodeIdVector[-1] == episodeId):
+                episodeStart = max(np.argwhere(self.replayMemory.episodeIdVector == episodeId))
+            else:
+                episodeStart = min(np.argwhere(self.replayMemory.episodeIdVector == episodeId))
+            episodePos = int(expId - episodeStart)%self.replayMemory.size
 
-        expEpisodePos       = self.replayMemory.episodePosVector[expId]
-        episodeIdxs         = np.arange(expId-expEpisodePos, expId+1, dtype=int)%self.replayMemory.size
-
+        episodeIdxs = np.arange(expId - episodePos, expId+1, dtype=int)%self.replayMemory.size
+        
         # Extract episode values
         episodeRewards      = self.replayMemory.getScaledReward(episodeIdxs)
         episodeTrIWs        = self.replayMemory.truncatedImportanceWeightVector[episodeIdxs]
         episodeStateValues  = self.replayMemory.stateValueVector[episodeIdxs]
         episodeRetraceValues = episodeStateValues + episodeTrIWs*(episodeRewards-episodeStateValues)
 
-        # Init retrace value fir the latest sampled experience in an episode
-        if (self.replayMemory.isTerminalVector[expId] == 1):
-            episodeRetraceValues[-1] += episodeStateValues[-1]
-        else:
+        # Init retrace value for the latest sampled experience in an episode
+        if (self.replayMemory.isTerminalVector[expId] != 1):
             episodeRetraceValues[-1] += episodeTrIWs[-1]*self.discountFactor*self.replayMemory.retraceValueVector[(expId+1)%self.replayMemory.size]
 
-        # Backward update retrace value through episode
-        for idx in range(expEpisodePos):
+        # Backward update retrace value through episode (#TODO replace this with filter op)
+        for idx in range(episodePos):
             episodeRetraceValues[-idx-2] += episodeTrIWs[-idx-2]*self.discountFactor*episodeRetraceValues[-idx-1]
-        
-        # Update retrace value of episode
-        self.replayMemory.retraceValueVector[episodeIdxs] = episodeRetraceValues
-
-
