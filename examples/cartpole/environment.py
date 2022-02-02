@@ -17,8 +17,7 @@ stateSpace = cart.stateSpace
 actionSpace = cart.actionSpace
 
 # Initialize Vracer
-vracer = Vracer(stateSpace, actionSpace, learningRate=0.0001, miniBatchSize=128, experienceReplaySize=32768, hiddenLayers=[128, 128])
-#vracer = Vracer(stateSpace, actionSpace, learningRate=0.0001, miniBatchSize=128, experienceReplaySize=1000, hiddenLayers=[128, 128])
+vracer = Vracer(stateSpace, actionSpace, learningRate=0.0001, miniBatchSize=32, experienceReplaySize=8192, hiddenLayers=[32,32])
 
 # Statistics init
 maxEpisode = -1
