@@ -1,6 +1,5 @@
 import sys
 import numpy as np
-import scipy.signal as signal
 import tensorflow as tf
 
 from replaymemory import *
@@ -275,6 +274,8 @@ class Vracer:
         if (self.replayMemory.isTerminalVector[expId] != 1):
             episodeRetraceValues[-1] += episodeTrIWs[-1]*self.discountFactor*self.replayMemory.retraceValueVector[(expId+1)%self.replayMemory.size]
 
-        # Backward update retrace value through episode (#TODO replace this with filter op)
+        # Backward update retrace value through episode (TODO: replace this op by filter)
         for idx in range(episodePos):
             episodeRetraceValues[-idx-2] += episodeTrIWs[-idx-2]*self.discountFactor*episodeRetraceValues[-idx-1]
+        
+        self.replayMemory.retraceValueVector[episodeIdxs] = episodeRetraceValues
