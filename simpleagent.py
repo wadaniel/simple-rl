@@ -99,5 +99,4 @@ class SAgent:
         self.currentEpisodeValues = []
         self.currentEpisodeStates = []
 
-        self.policyUpdateCount += 1
         print("[SAGENT] Total Experiences: {}".format(self.totalExperiences))
