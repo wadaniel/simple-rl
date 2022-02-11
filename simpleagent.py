@@ -78,7 +78,7 @@ class SAgent:
         for i in range(1, episodeLength):
             vtbc[-i-1] = rewards[-i-1] + self.discountFactor*vtbc[-i]
 
-        # Qret - V
+        # Avantage estimate
         advantage = vtbc - values
 
         # Calculate gradient of expected advantage
