@@ -15,25 +15,33 @@ class Gracer:
         self.actionSpace = actionSpace
 
         # Agent Configuration
+        self.verbose                    = kwargs.pop('verbose', 0)
         self.experienceReplaySize       = kwargs.pop('experienceReplaySize', 32768)
         self.miniBatchSize              = kwargs.pop('miniBatchSize', 128)
         self.hiddenLayers               = kwargs.pop('hiddenLayers', [128, 128])
         self.activationFunction         = kwargs.pop('activationFunction', 'tanh')
         self.learningRate               = kwargs.pop('learningRate', 0.001)
-        self.gmdhUpdateSchedule         = kwargs.pop('gmdhUpdateSchedule', 0.2)
-        self.gmdhMiniBatchSize          = kwargs.pop('gmdhMiniBatchSize', 1024)
-        self.gmdhMaxLayer               = kwargs.pop('gmdhMaxLayer', 8)
         self.discountFactor             = kwargs.pop('discountFactor', 0.99)
         self.offPolicyCutOff            = kwargs.pop('offPolicyCutOff', 4.)
         self.offPolicyTarget            = kwargs.pop('offPolicyTarget', .1)
         self.offPolicyREFERBeta         = kwargs.pop('offPolicyREFERBeta', .3)
         self.offPolicyAnnealingRate     = kwargs.pop('offPolicyAnnealingRate', 5e-7)
         self.policyUpdatesPerExperience = kwargs.pop('policyUpdatesPerExperience', 1.)
-        self.verbose                    = kwargs.pop('verbose', 0)
+        self.gmdhUpdateSchedule         = kwargs.pop('gmdhUpdateSchedule', 0.1)
+        self.gmdhMaxLayer               = kwargs.pop('gmdhMaxLayer', 8)
+        self.gmdhMaxValueOutput         = kwargs.pop('gmdhMaxValueOutput', 1e6)
+ 
+        # Measure update time
+        self.tforward = 0.
+        self.tretrace = 0.
+        self.tgradient = 0.
+        self.tgmdh = 0.
+        self.ttotal = 0.
+
 
         # Check for unused args
         if kwargs:
-            raise TypeError('Unepxected kwargs provided: %s' % list(kwargs.keys()))
+            raise TypeError('[GRACER] Unepxected kwargs provided: %s' % list(kwargs.keys()))
 
         # ReplayMemory
         self.replayMemory = ReplayMemory(self.experienceReplaySize, self.stateSpace, self.actionSpace, self.discountFactor)
@@ -55,7 +63,15 @@ class Gracer:
    
     def getValue(self, state):
         xdata = np.column_stack((state, state**2))
-        value = self.gmdh.predict(xdata) if self.gmdh.valid else 0.
+        value = self.gmdh.predict(xdata) if self.gmdh.valid else np.zeros(state.shape[0])
+        if np.isfinite(value).all() == False:
+            print("[GRACER] Error: Infinite state value predicted!")
+            print("[GRACER] States:")
+            print(state)
+            print("[GRACER] Values:")
+            print(value)
+            sys.exit()
+        value = value.clip(min=-self.gmdhMaxValueOutput, max=self.gmdhMaxValueOutput)
         return value
  
     def getPolicy(self, state):
@@ -67,8 +83,7 @@ class Gracer:
         # Evaluate policy on current state
         meanSigma = self.policyNetwork(tf.convert_to_tensor([state]))
             
-        xdata = np.array([np.concatenate((state, state**2))])
-        value = self.gmdh.predict(xdata) if self.gmdh.valid else 0.
+        value = self.getValue(np.array([state]))
         mean = meanSigma[0,0:self.actionSpace]
         sdev = meanSigma[0,self.actionSpace:]
         
@@ -100,11 +115,6 @@ class Gracer:
             print("[GRACER] Filling replay memory with experiences before training.. ({:.2f}%/{:.2f}%)".format(self.replayMemory.size/self.replayMemory.memorySize*100, self.experienceReplayStartSize/self.replayMemory.memorySize*100))
             return
  
-        # Measure update time
-        tforward = 0.
-        tretrace = 0.
-        tgradient = 0.
-
         start = time.time()
 
         # Reset retrace values with scaled reward   
@@ -113,6 +123,7 @@ class Gracer:
         
         numExperiences = len(episode)
         numUpdates = int(numExperiences*self.policyUpdatesPerExperience)
+        tUpdate = 0.
 
         # Network update with Mini-Batch
         for _ in range(numUpdates):
@@ -123,15 +134,18 @@ class Gracer:
             with tf.GradientTape(watch_accessed_variables=False) as tape:
                 tape.watch(self.policyNetwork.trainable_variables)
                 
-                start0 = time.time()
                 
                 # Forward mini-batch 
                 states = self.replayMemory.stateVector[miniBatchExpIds,:]
-                meanSigmas = self.policyNetwork(tf.convert_to_tensor(states))
 
-                xdata = np.column_stack((states, states**2))
-                stateValues = self.gmdh.predict(xdata) if self.gmdh.valid else 0.
+                s0 = time.time()
+                stateValues = self.getValue(states)
+                e0 = time.time()
+                self.tgmdh += (e0 - s0)
                 
+                start0 = time.time()
+                
+                meanSigmas = self.policyNetwork(tf.convert_to_tensor(states))
                 actions = self.replayMemory.actionVector[miniBatchExpIds,:]
                 expMeans = self.replayMemory.expMeanVector[miniBatchExpIds,:]
                 expSdevs = self.replayMemory.expSdevVector[miniBatchExpIds,:]
@@ -160,7 +174,7 @@ class Gracer:
                 self.replayMemory.truncatedImportanceWeightVector[miniBatchExpIds] = np.minimum(np.ones(self.miniBatchSize), importanceWeights)
                  
                 end0 = time.time()
-                tforward += (end0-start0)
+                self.tforward += (end0-start0)
                 start1 = time.time()
 
                 episodeIds = self.replayMemory.episodeIdVector[miniBatchExpIds]
@@ -174,7 +188,7 @@ class Gracer:
                 [ self.__updateRetraceValues(expId) for expId in retraceMiniBatch ] #TODO: this updates are expensive
                 
                 end1 = time.time()
-                tretrace += (end1-start1)
+                self.tretrace += (end1-start1)
                 start2 = time.time()
                 
                 # Vtbcs
@@ -190,7 +204,7 @@ class Gracer:
                 gradLoss = tape.gradient(loss, self.policyNetwork.trainable_variables)
 
                 end2 = time.time()
-                tgradient += (end2-start2)
+                self.tgradient += (end2-start2)
             
             self.policyUpdateCount += 1
             norm = tf.math.sqrt(sum([tf.math.reduce_sum(tf.math.square(g)) for g in gradLoss]))
@@ -216,27 +230,23 @@ class Gracer:
         if ((self.replayMemory.totalExperiences-self.lastGmdhUpdate)/self.lastGmdhUpdate > self.gmdhUpdateSchedule):
             xdata = np.column_stack((self.replayMemory.stateVector[:self.replayMemory.size], self.replayMemory.stateVector[:self.replayMemory.size]**2))
 
-            gmdhMiniBatchExpIds = self.replayMemory.sample(self.gmdhMiniBatchSize)
-            mask=np.full(self.replayMemory.size,False,dtype=bool)
-            mask[gmdhMiniBatchExpIds]=True
             self.gmdh.fit(xdata, self.replayMemory.retraceValueVector[:self.replayMemory.size])
-            #self.gmdh.fit(xdata[mask], self.replayMemory.retraceValueVector[mask])
-            #self.gmdh.fit(xdata[mask], self.replayMemory.retraceValueVector[mask], validation_data=(xdata[~mask], self.replayMemory[~mask]))
             self.lastGmdhUpdate = self.replayMemory.totalExperiences
         end3 = time.time()
-        tgmdh = (end3-start3)
+        self.tgmdh += (end3-start3)
        
         # Measure update time
         end = time.time()
-
-        ttotal = end-start
-        pctForward = tforward/ttotal*100.
-        pctRetrace = tretrace/ttotal*100.
-        pctGradient = tgradient/ttotal*100.
-        pctGmdh = tgmdh/ttotal*100.
+        tupdate = (end-start)
+        
+        self.ttotal += tupdate
+        pctForward = self.tforward/self.ttotal*100.
+        pctRetrace = self.tretrace/self.ttotal*100.
+        pctGradient = self.tgradient/self.ttotal*100.
+        pctGmdh = self.tgmdh/self.ttotal*100.
         
 
-        print("[GRACER] Total Experiences: {}\n[GRACER] Current Learning Rate {}\n[GRACER] Off Policy Ratio {:0.3f}\n[GRACER] Off-Policy Ref-ER Beta {}\n[GRACER] Reward Scaling Factor {:0.3f}\n[GRACER] Updates Per Sec: {:0.3f}\n[GRACER] Pct Forward {:0.1f}\n[GRACER] Pct Retrace {:0.1f}\n[GRACER] Pct Gradient {:0.1f}\n[GRACER] Pct GMDH {:0.1f}".format(self.replayMemory.totalExperiences, self.currentLearningRate, self.offPolicyRatio, self.offPolicyREFERBeta, self.replayMemory.rewardScalingFactor, numUpdates/(ttotal), pctForward, pctRetrace, pctGradient, pctGmdh))
+        print("[GRACER] Total Experiences: {}\n[GRACER] Current Learning Rate {}\n[GRACER] Off Policy Ratio {:0.3f}\n[GRACER] Off-Policy Ref-ER Beta {}\n[GRACER] Reward Scaling Factor {:0.3f}\n[GRACER] Updates Per Sec: {:0.3f}\n[GRACER] Pct Forward {:0.1f}\n[GRACER] Pct Retrace {:0.1f}\n[GRACER] Pct Gradient {:0.1f}\n[GRACER] Pct GMDH {:0.1f}".format(self.replayMemory.totalExperiences, self.currentLearningRate, self.offPolicyRatio, self.offPolicyREFERBeta, self.replayMemory.rewardScalingFactor, numUpdates/(tupdate), pctForward, pctRetrace, pctGradient, pctGmdh))
     
     def __initValueGMDH(self, stateSpace):
         self.gmdh = Regressor(ref_functions=('linear_cov', 'quad'), 
@@ -256,7 +266,7 @@ class Gracer:
                 x = tf.keras.layers.Dense(size, kernel_initializer='glorot_uniform', activation=self.activationFunction, dtype='float32')(x)
 
 
-        scaledGlorot = lambda shape, dtype : 0.001*tf.keras.initializers.GlorotNormal()(shape)
+        scaledGlorot = lambda shape, dtype : 0.001*tf.keras.initializers.GlorotUniform()(shape)
 
         mean  = tf.keras.layers.Dense(actionSpace, kernel_initializer=scaledGlorot, activation = "linear", dtype='float32')(x)
         sigma = tf.keras.layers.Dense(actionSpace, kernel_initializer=scaledGlorot, activation = "softplus", dtype='float32')(x)
@@ -272,8 +282,8 @@ class Gracer:
         return self.offPolicyREFERBeta * negAdvantage + (1.- self.offPolicyREFERBeta) * expKLdiv
 
     def __calculateImportanceWeight(self, action, expMean, expSdev, curMean, curSdev):
-        logpExpPolicy = -0.5*((action-expMean)/expSdev)**2 - tf.math.log(expSdev)
         logpCurPolicy = -0.5*((action-curMean)/curSdev)**2 - tf.math.log(curSdev)
+        logpExpPolicy = -0.5*((action-expMean)/expSdev)**2 - tf.math.log(expSdev)
         logImportanceWeight = tf.reduce_sum(logpCurPolicy - logpExpPolicy, 1)
         return tf.math.exp(logImportanceWeight)
 

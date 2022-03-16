@@ -4,9 +4,13 @@ import sys
 import numpy as np
 sys.path.append('../../') # path to gracer
 
-from gracer import *
-
-numEpisodes = 100000
+# Init argparser
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('--maxgen', type=int, default=1000)
+parser.add_argument('--maxreward', type=float, default=1e6)
+parser.add_argument('--maxavgreward', type=float, default=1e6)
+args = parser.parse_args()
 
 # Init cartpole
 from cartpole import *
@@ -16,8 +20,9 @@ cart = CartPole()
 stateSpace = cart.stateSpace
 actionSpace = cart.actionSpace
 
-# Initialize Vracer
-gracer = Gracer(stateSpace, actionSpace, learningRate=0.0001, miniBatchSize=32, experienceReplaySize=8192, hiddenLayers=[32,32])
+# Initialize Gracer
+from gracer import *
+gracer = Gracer(stateSpace, actionSpace, learningRate=0.001, miniBatchSize=32, experienceReplaySize=8192, hiddenLayers=[32,32])
 
 # Statistics init
 maxEpisode = -1
@@ -25,7 +30,7 @@ maxReward = -np.inf
 rewardHistory = []
 
 # Training loop
-for episodeId in range(numEpisodes):
+for episodeId in range(args.maxgen):
   
     # Reset env
     cart.reset(episodeId)
@@ -69,6 +74,6 @@ for episodeId in range(numEpisodes):
     rollingAvg = np.mean(rewardHistory[-100:])
     print("\nEpisode: {}, Number of Steps : {}, Cumulative reward: {:0.1f} (Avg. {:0.2f} / Max {:0.1f} at {})".format(episodeId, steps, cumulativeReward, rollingAvg, maxReward, maxEpisode))
 
-    if cumulativeReward == 500.:
+    if cumulativeReward >= args.maxreward or rollingAvg >= args.maxavgreward:
         print("*********************Solved********************")
         sys.exit()
