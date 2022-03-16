@@ -22,7 +22,7 @@ actionSpace = cart.actionSpace
 
 # Initialize Vracer
 from vracer import *
-vracer = Vracer(stateSpace, actionSpace, learningRate=0.001, miniBatchSize=32, experienceReplaySize=8192, hiddenLayers=[32,32])
+vracer = Vracer(stateSpace, actionSpace, learningRate=0.0001, miniBatchSize=32, experienceReplaySize=8192, hiddenLayers=[32,32])
 
 # Statistics init
 maxEpisode = -1
