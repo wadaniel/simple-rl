@@ -22,7 +22,7 @@ class Gracer:
         self.learningRate               = kwargs.pop('learningRate', 0.001)
         self.gmdhUpdateSchedule         = kwargs.pop('gmdhUpdateSchedule', 0.2)
         self.gmdhMiniBatchSize          = kwargs.pop('gmdhMiniBatchSize', 1024)
-        self.gmdhMaxLayer               = kwargs.pop('gmdhMaxLayer', 16)
+        self.gmdhMaxLayer               = kwargs.pop('gmdhMaxLayer', 32)
         self.discountFactor             = kwargs.pop('discountFactor', 0.99)
         self.offPolicyCutOff            = kwargs.pop('offPolicyCutOff', 4.)
         self.offPolicyTarget            = kwargs.pop('offPolicyTarget', .1)
@@ -55,7 +55,7 @@ class Gracer:
    
     def getValue(self, state):
         xdata = np.column_stack((state, state**2))
-        value = self.gmdh.predict(xdata) if self.gmdhFit else 0.
+        value = self.gmdh.predict(xdata) if self.gmdh.valid else 0.
         return value
  
     def getPolicy(self, state):
@@ -68,7 +68,7 @@ class Gracer:
         meanSigma = self.policyNetwork(tf.convert_to_tensor([state]))
             
         xdata = np.array([np.concatenate((state, state**2))])
-        value = self.gmdh.predict(xdata) if self.gmdhFit else 0.
+        value = self.gmdh.predict(xdata) if self.gmdh.valid else 0.
         mean = meanSigma[0,0:self.actionSpace]
         sdev = meanSigma[0,self.actionSpace:]
         
@@ -130,7 +130,7 @@ class Gracer:
                 meanSigmas = self.policyNetwork(tf.convert_to_tensor(states))
 
                 xdata = np.column_stack((states, states**2))
-                stateValues = self.gmdh.predict(xdata) if self.gmdhFit else 0.
+                stateValues = self.gmdh.predict(xdata) if self.gmdh.valid else 0.
                 
                 actions = self.replayMemory.actionVector[miniBatchExpIds,:]
                 expMeans = self.replayMemory.expMeanVector[miniBatchExpIds,:]
@@ -222,7 +222,6 @@ class Gracer:
             self.gmdh.fit(xdata, self.replayMemory.retraceValueVector[:self.replayMemory.size])
             #self.gmdh.fit(xdata[mask], self.replayMemory.retraceValueVector[mask])
             #self.gmdh.fit(xdata[mask], self.replayMemory.retraceValueVector[mask], validation_data=(xdata[~mask], self.replayMemory[~mask]))
-            self.gmdhFit = True
             self.lastGmdhUpdate = self.replayMemory.totalExperiences
         end3 = time.time()
         tgmdh = (end3-start3)
@@ -246,7 +245,6 @@ class Gracer:
                             #seq_type='mode4_2',
                             min_best_neurons_count=30, 
                             n_jobs=4)
-        self.gmdhFit = False
 
     def __initPolicyNetwork(self, stateSpace, actionSpace, hiddenLayers):
     
