@@ -224,14 +224,28 @@ class Gracer:
         self.currentLearningRate = self.learningRate / (1. + self.offPolicyAnnealingRate * self.policyUpdateCount)
         self.offPolicyCurrentCutOff = self.offPolicyCutOff / (1. + self.offPolicyAnnealingRate * self.policyUpdateCount)
   
-        # Fit GMDH model to retrace
         start3 = time.time()
         
+        # Fit GMDH model to retrace
         if ((self.replayMemory.totalExperiences-self.lastGmdhUpdate)/self.lastGmdhUpdate > self.gmdhUpdateSchedule):
+
+            # Find last experiences of episodes
+            terminalExpIds = np.arange(self.replayMemory.size)
+            episodeIds = self.replayMemory.episodeIdVector[terminalExpIds]
+            idMisMatch = episodeIds[:-1] != episodeIds[1:]
+            idMisMatch = np.append(idMisMatch, 1)
+
+            # Get all last experiences of episodes
+            retraceBatch = terminalExpIds[idMisMatch == 1]
+
+            # Update all retrace values
+            [ self.__updateRetraceValues(expId) for expId in retraceBatch ] #TODO: this updates are expensive
+
             xdata = np.column_stack((self.replayMemory.stateVector[:self.replayMemory.size], self.replayMemory.stateVector[:self.replayMemory.size]**2))
 
             self.gmdh.fit(xdata, self.replayMemory.retraceValueVector[:self.replayMemory.size])
             self.lastGmdhUpdate = self.replayMemory.totalExperiences
+
         end3 = time.time()
         self.tgmdh += (end3-start3)
        

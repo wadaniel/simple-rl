@@ -29,7 +29,7 @@ class Vracer:
 
         # Check for unused args
         if kwargs:
-            raise TypeError('Unepxected kwargs provided: %s' % list(kwargs.keys()))
+            raise TypeError('[VRACER] Unepxected kwargs provided: %s' % list(kwargs.keys()))
 
         # ReplayMemory
         self.replayMemory = ReplayMemory(self.experienceReplaySize, self.stateSpace, self.actionSpace, self.discountFactor)
