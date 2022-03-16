@@ -22,7 +22,7 @@ class Gracer:
         self.learningRate               = kwargs.pop('learningRate', 0.001)
         self.gmdhUpdateSchedule         = kwargs.pop('gmdhUpdateSchedule', 0.2)
         self.gmdhMiniBatchSize          = kwargs.pop('gmdhMiniBatchSize', 1024)
-        self.gmdhMaxLayer               = kwargs.pop('gmdhMaxLayer', 32)
+        self.gmdhMaxLayer               = kwargs.pop('gmdhMaxLayer', 8)
         self.discountFactor             = kwargs.pop('discountFactor', 0.99)
         self.offPolicyCutOff            = kwargs.pop('offPolicyCutOff', 4.)
         self.offPolicyTarget            = kwargs.pop('offPolicyTarget', .1)
