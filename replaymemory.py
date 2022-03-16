@@ -3,11 +3,9 @@ import numpy as np
 class ReplayMemory:
 
 
-    def __init__(self, memorySize, miniBatchSize, stateDim, actionDim, discountFactor):
+    def __init__(self, memorySize, stateDim, actionDim, discountFactor):
 
         self.memorySize = memorySize
-        self.miniBatchSize = miniBatchSize
-        
         self.stateDim = stateDim
         self.actionDim = actionDim
         self.discountFactor = discountFactor
@@ -36,11 +34,11 @@ class ReplayMemory:
         self.rewardScalingFactor = 1.
         self.totalExperiences = 0
 
-    def sample(self):
-        if self.size <  self.miniBatchSize:
+    def sample(self, miniBatchSize):
+        if self.size <  miniBatchSize:
             return []
 
-        sampleIndexes = np.floor(np.random.random((self.miniBatchSize,))*self.size).astype(int)
+        sampleIndexes = np.floor(np.random.random((miniBatchSize,))*self.size).astype(int)
         return np.sort(sampleIndexes)
 
     def processAndStoreEpisode(self, episode):
