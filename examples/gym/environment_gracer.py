@@ -2,7 +2,7 @@
 
 import sys
 import numpy as np
-sys.path.append('../../') # path to vracer
+sys.path.append('../../') # path to gracer
 
 # Init argparser
 import argparse
@@ -22,9 +22,9 @@ env.seed(42)
 stateSpace = len(env.observation_space.high)
 actionSpace = len(env.action_space.high)
 
-# Initialize Vracer
-from vracer import *
-vracer = Vracer(stateSpace, actionSpace, learningRate=0.0001, miniBatchSize=32, experienceReplaySize=16384, hiddenLayers=[32,32])
+# Initialize Gracer
+from gracer import *
+gracer = Gracer(stateSpace, actionSpace, learningRate=0.0001, miniBatchSize=32, experienceReplaySize=16384, hiddenLayers=[32,32])
 
 maxReward = -np.inf
 rewardHistory = []
@@ -45,7 +45,7 @@ for episodeId in range(args.maxgen):
     while (not done):
  
             # Evaluate policy on current state
-            action = vracer.getAction(state)
+            action = gracer.getAction(state)
             
             # Execute action and observe reward & next state from Environment
             nextState, reward, done, _ = env.step(action)
@@ -60,7 +60,7 @@ for episodeId in range(args.maxgen):
 
     
     # Traing agent
-    vracer.train(episode)
+    gracer.train(episode)
  
     # Statistics
     if cumulativeReward > maxReward:
