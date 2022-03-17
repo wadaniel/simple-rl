@@ -34,6 +34,10 @@ class ReplayMemory:
         self.rewardScalingFactor = 1.
         self.totalExperiences = 0
 
+        # State rescaling
+        self.stateMean = np.zeros(self.stateDim)
+        self.invStateSdev = np.ones(self.stateDim)
+
     def sample(self, miniBatchSize):
         if self.size <  miniBatchSize:
             return []
@@ -74,6 +78,17 @@ class ReplayMemory:
     
     def getScaledReward(self, expIds):
         return self.rewardScalingFactor*self.rewardVector[expIds]
+     
+    def setStateRescaling(self):
+        self.stateMean = np.mean(self.stateVector[:self.size, :], axis=0)
+        self.invStateSdev = 1./np.std(self.stateVector[:self.size, :], axis=0)
+        print("[ReplayMemory] State Rescaling Mean:")
+        print(self.stateMean)
+        print("[ReplayMemory] State Rescaling Sdev:")
+        print(1./self.invStateSdev)
+
+    def getScaledState(self, expIds):
+        return (self.stateVector[expIds, :]-self.stateMean)*self.invStateSdev
     
     def __store(self, pos, state, action, reward, isTerminal, stateValue, mean, sdev, retraceValue):
 

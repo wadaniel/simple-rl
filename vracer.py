@@ -32,6 +32,7 @@ class Vracer:
             raise TypeError('[VRACER] Unepxected kwargs provided: %s' % list(kwargs.keys()))
 
         # ReplayMemory
+        self.doRescale = True
         self.replayMemory = ReplayMemory(self.experienceReplaySize, self.stateSpace, self.actionSpace, self.discountFactor)
         
         # Variables
@@ -48,23 +49,19 @@ class Vracer:
         self.__initValuePolicyNetwork(self.stateSpace, self.actionSpace, self.hiddenLayers)
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.currentLearningRate)
    
-    def getValue(self, state):
-        valueMeanSigma = self.valuePolicyNetwork(tf.convert_to_tensor([state]))
-        return valueMeanSigma[0,0]
- 
-    def getPolicy(self, state):
-        valueMeanSigma = self.valuePolicyNetwork(tf.convert_to_tensor([state]))
-        return valueMeanSigma[0,1:self.actionSpace+1], valueMeanSigma[0, self.actionSpace+1:]
+    def getValueAndPolicy(self, state):
+        rescaledState = (state - self.replayMemory.stateMean)*self.replayMemory.invStateSdev
+        valueMeanSigma = self.valuePolicyNetwork(tf.convert_to_tensor([rescaledState]))
+        return valueMeanSigma
 
     def getAction(self, state):
             
         # Evaluate policy on current state
-        valueMeanSigma = self.valuePolicyNetwork(tf.convert_to_tensor([state]))
-            
-        value = valueMeanSigma[0,0]
-        mean = valueMeanSigma[0,1:self.actionSpace+1]
-        sdev = valueMeanSigma[0,1+self.actionSpace:]
-        
+        valueMeanSdev = self.getValueAndPolicy(state)
+        value = valueMeanSdev[0,0]
+        mean = valueMeanSdev[0,1:self.actionSpace+1]
+        sdev = valueMeanSdev[0,self.actionSpace+1:]
+
         # Collect mean and sigmas for later use
         self.currentEpisodeMeansAndSdevs.append((value,mean,sdev))
 
@@ -93,6 +90,11 @@ class Vracer:
             print("[VRACER] Filling replay memory with experiences before training.. ({:.2f}%/{:.2f}%)".format(self.replayMemory.size/self.replayMemory.memorySize*100, self.experienceReplayStartSize/self.replayMemory.memorySize*100))
             return
  
+        # Rescale states once
+        if self.doRescale:
+            self.replayMemory.setStateRescaling()
+            self.doRescale = False
+
         # Measure update time
         tforward = 0.
         tretrace = 0.
@@ -119,17 +121,17 @@ class Vracer:
                 start0 = time.time()
                 
                 # Forward mini-batch 
-                states = self.replayMemory.stateVector[miniBatchExpIds,:]
-                valueMeanSigmas = self.valuePolicyNetwork(tf.convert_to_tensor(states))
+                states = self.replayMemory.getScaledState(miniBatchExpIds)
+                valueMeanSdev = self.getValueAndPolicy(states)
                 
+                stateValues = valueMeanSdev[0,:,0]
+                curMeans = valueMeanSdev[0,:,1:self.actionSpace+1]
+                curSdevs = valueMeanSdev[0,:,self.actionSpace+1:]
+
                 actions = self.replayMemory.actionVector[miniBatchExpIds,:]
                 expMeans = self.replayMemory.expMeanVector[miniBatchExpIds,:]
                 expSdevs = self.replayMemory.expSdevVector[miniBatchExpIds,:]
-          
-                stateValues = valueMeanSigmas[:,0]
-                curMeans = valueMeanSigmas[:,1:self.actionSpace+1]
-                curSdevs = valueMeanSigmas[:,1+self.actionSpace:]
-         
+           
                 # Calculate importance weigts and check on-policyness
                 isExpOnPolicy = self.replayMemory.isOnPolicyVector[miniBatchExpIds]
                 importanceWeights = self.__calculateImportanceWeight(actions, expMeans, expSdevs, curMeans, curSdevs)
@@ -175,7 +177,7 @@ class Vracer:
                 advantage = self.replayMemory.getScaledReward(miniBatchExpIds) + self.discountFactor * (self.replayMemory.isTerminalVector[miniBatchExpIds] == False) * self.replayMemory.retraceValueVector[(miniBatchExpIds+1)%self.replayMemory.size] - self.replayMemory.stateValueVector[miniBatchExpIds]
 
                 # Calculate Loss
-                loss = self.__calculateLoss(valueMeanSigmas, Vtbcs, importanceWeights, advantage, isCurOnPolicy, expMeans, expSdevs)
+                loss = self.__calculateLoss(stateValues, curMeans, curSdevs, Vtbcs, importanceWeights, advantage, isCurOnPolicy, expMeans, expSdevs)
         
                 # Calculate gradient of loss
                 gradLoss = tape.gradient(loss, self.valuePolicyNetwork.trainable_variables)
@@ -231,11 +233,8 @@ class Vracer:
         outputs = tf.keras.layers.Concatenate()([value, mean, sigma])
         self.valuePolicyNetwork = tf.keras.Model(inputs=inputs, outputs=outputs, name='valuePolicyNetwork')
  
-    def __calculateLoss(self, valueMeanSigmas, Vtbc, importanceWeights, offPgDiff, isOnPolicy, expMeans, expSdevs):
-        stateValue = valueMeanSigmas[:,0]
-        curMeans = valueMeanSigmas[:,1:self.actionSpace+1]
-        curSdevs = valueMeanSigmas[:,self.actionSpace+1:]
-        valueLoss = 0.5*tf.losses.mean_squared_error(stateValue, Vtbc)
+    def __calculateLoss(self, stateValues, curMeans, curSdevs, Vtbc, importanceWeights, offPgDiff, isOnPolicy, expMeans, expSdevs):
+        valueLoss = 0.5*tf.losses.mean_squared_error(stateValues, Vtbc)
         negAdvantage = -tf.math.reduce_mean(tf.boolean_mask(importanceWeights*offPgDiff,isOnPolicy))
         expKLdiv = 0.5*tf.math.reduce_mean(2*tf.math.log(curSdevs/expSdevs) + (expSdevs/curSdevs)**2 + ((curMeans - expMeans) / curSdevs)**2)
         return valueLoss + self.offPolicyREFERBeta * negAdvantage + (1.- self.offPolicyREFERBeta) * expKLdiv

@@ -2,7 +2,7 @@
 
 import sys
 import numpy as np
-sys.path.append('../../') # path to vracer
+sys.path.append('../../') # path to gracer
 
 # Init argparser
 import argparse
@@ -10,12 +10,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--maxgen', type=int, default=1000)
 parser.add_argument('--maxreward', type=float, default=1e6)
 parser.add_argument('--maxavgreward', type=float, default=1e6)
+parser.add_argument('--env', type=str, default="Pendulum-v1")
 args = parser.parse_args()
 
 # Choose Gym environment
 import gym
-#env = gym.envs.make("Pendulum-v1")  
-env = gym.envs.make("MountainCarContinuous-v0") 
+env = gym.envs.make(args.env)
 env.seed(42)
 
 # Dimension of state and action space

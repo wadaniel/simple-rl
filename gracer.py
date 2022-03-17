@@ -44,6 +44,7 @@ class Gracer:
             raise TypeError('[GRACER] Unepxected kwargs provided: %s' % list(kwargs.keys()))
 
         # ReplayMemory
+        self.doRescale = True
         self.replayMemory = ReplayMemory(self.experienceReplaySize, self.stateSpace, self.actionSpace, self.discountFactor)
         
         # Variables
@@ -75,17 +76,17 @@ class Gracer:
         return value
  
     def getPolicy(self, state):
-        meanSigma = self.policyNetwork(tf.convert_to_tensor([state]))
-        return meanSigma[0,:self.actionSpace], meanSigma[0, self.actionSpace:]
+        rescaledState = (state - self.replayMemory.stateMean)*self.replayMemory.invStateSdev
+        meanSigma = self.policyNetwork(tf.convert_to_tensor([rescaledState]))
+        return meanSigma
 
     def getAction(self, state):
             
         # Evaluate policy on current state
-        meanSigma = self.policyNetwork(tf.convert_to_tensor([state]))
-            
+        meanSigma = self.getPolicy(state)
+        mean = meanSigma[0, :self.actionSpace]
+        sdev = meanSigma[0, self.actionSpace:]
         value = self.getValue(np.array([state]))
-        mean = meanSigma[0,0:self.actionSpace]
-        sdev = meanSigma[0,self.actionSpace:]
         
         # Collect mean and sigmas for later use
         self.currentEpisodeMeansAndSdevs.append((value,mean,sdev))
@@ -94,6 +95,7 @@ class Gracer:
         action = tf.random.normal(shape=(self.actionSpace,1), mean=mean, stddev=sdev)[0,:]
         return action
  
+
     def train(self, episode):
 
         # Safety check
@@ -115,6 +117,11 @@ class Gracer:
             print("[GRACER] Filling replay memory with experiences before training.. ({:.2f}%/{:.2f}%)".format(self.replayMemory.size/self.replayMemory.memorySize*100, self.experienceReplayStartSize/self.replayMemory.memorySize*100))
             return
  
+        # Rescale states once
+        if self.doRescale == True:
+            self.replayMemory.setStateRescaling()
+            self.doRescale = False
+
         start = time.time()
 
         # Reset retrace values with scaled reward   
@@ -136,7 +143,7 @@ class Gracer:
                 
                 
                 # Forward mini-batch 
-                states = self.replayMemory.stateVector[miniBatchExpIds,:]
+                states = self.replayMemory.getScaledState(miniBatchExpIds)
 
                 s0 = time.time()
                 stateValues = self.getValue(states)
@@ -145,14 +152,14 @@ class Gracer:
                 
                 start0 = time.time()
                 
-                meanSigmas = self.policyNetwork(tf.convert_to_tensor(states))
+                meanSigmas = self.getPolicy(states)
+                curMeans = meanSigmas[0,:, :self.actionSpace]
+                curSdevs = meanSigmas[0,:, self.actionSpace:]
+
                 actions = self.replayMemory.actionVector[miniBatchExpIds,:]
                 expMeans = self.replayMemory.expMeanVector[miniBatchExpIds,:]
                 expSdevs = self.replayMemory.expSdevVector[miniBatchExpIds,:]
           
-                curMeans = meanSigmas[:,:self.actionSpace]
-                curSdevs = meanSigmas[:,self.actionSpace:]
-         
                 # Calculate importance weigts and check on-policyness
                 isExpOnPolicy = self.replayMemory.isOnPolicyVector[miniBatchExpIds]
                 importanceWeights = self.__calculateImportanceWeight(actions, expMeans, expSdevs, curMeans, curSdevs)
@@ -198,7 +205,7 @@ class Gracer:
                 advantage = self.replayMemory.getScaledReward(miniBatchExpIds) + self.discountFactor * (self.replayMemory.isTerminalVector[miniBatchExpIds] == False) * self.replayMemory.retraceValueVector[(miniBatchExpIds+1)%self.replayMemory.size] - self.replayMemory.stateValueVector[miniBatchExpIds]
 
                 # Calculate Loss
-                loss = self.__calculateLoss(meanSigmas, importanceWeights, advantage, isCurOnPolicy, expMeans, expSdevs)
+                loss = self.__calculateLoss(curMeans, curSdevs, importanceWeights, advantage, isCurOnPolicy, expMeans, expSdevs)
         
                 # Calculate gradient of loss
                 gradLoss = tape.gradient(loss, self.policyNetwork.trainable_variables)
@@ -241,7 +248,8 @@ class Gracer:
             # Update all retrace values
             [ self.__updateRetraceValues(expId) for expId in retraceBatch ] #TODO: this updates are expensive
 
-            xdata = np.column_stack((self.replayMemory.stateVector[:self.replayMemory.size], self.replayMemory.stateVector[:self.replayMemory.size]**2))
+            scaledStates = self.replayMemory.getScaledState(np.arange(self.replayMemory.size))
+            xdata = np.column_stack((scaledStates, scaledStates**2))
 
             self.gmdh.fit(xdata, self.replayMemory.retraceValueVector[:self.replayMemory.size])
             self.lastGmdhUpdate = self.replayMemory.totalExperiences
@@ -288,9 +296,7 @@ class Gracer:
         outputs = tf.keras.layers.Concatenate()([mean, sigma])
         self.policyNetwork = tf.keras.Model(inputs=inputs, outputs=outputs, name='PolicyNetwork')
  
-    def __calculateLoss(self, meanSigmas, importanceWeights, offPgDiff, isOnPolicy, expMeans, expSdevs):
-        curMeans = meanSigmas[:,:self.actionSpace]
-        curSdevs = meanSigmas[:,self.actionSpace:]
+    def __calculateLoss(self, curMeans, curSdevs, importanceWeights, offPgDiff, isOnPolicy, expMeans, expSdevs):
         negAdvantage = -tf.math.reduce_mean(tf.boolean_mask(importanceWeights*offPgDiff,isOnPolicy))
         expKLdiv = 0.5*tf.math.reduce_mean(2*tf.math.log(curSdevs/expSdevs) + (expSdevs/curSdevs)**2 + ((curMeans - expMeans) / curSdevs)**2)
         return self.offPolicyREFERBeta * negAdvantage + (1.- self.offPolicyREFERBeta) * expKLdiv
