@@ -143,7 +143,7 @@ class Gracer:
                 
                 
                 # Forward mini-batch 
-                states = self.replayMemory.getScaledState(miniBatchExpIds)
+                states = self.replayMemory.stateVector[miniBatchExpIds, :]
 
                 s0 = time.time()
                 stateValues = self.getValue(states)
@@ -246,7 +246,7 @@ class Gracer:
             retraceBatch = terminalExpIds[idMisMatch == 1]
 
             # Update all retrace values
-            [ self.__updateRetraceValues(expId) for expId in retraceBatch ] #TODO: this updates are expensive
+            [ self.__updateRetraceValues(expId) for expId in retraceBatch ] #TODO: these updates are expensive
 
             scaledStates = self.replayMemory.getScaledState(np.arange(self.replayMemory.size))
             xdata = np.column_stack((scaledStates, scaledStates**2))

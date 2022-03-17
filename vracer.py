@@ -121,7 +121,7 @@ class Vracer:
                 start0 = time.time()
                 
                 # Forward mini-batch 
-                states = self.replayMemory.getScaledState(miniBatchExpIds)
+                states = self.replayMemory.stateVector[miniBatchExpIds, :]
                 valueMeanSdev = self.getValueAndPolicy(states)
                 
                 stateValues = valueMeanSdev[0,:,0]
