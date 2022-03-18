@@ -27,8 +27,8 @@ class Gracer:
         self.offPolicyREFERBeta         = kwargs.pop('offPolicyREFERBeta', .3)
         self.offPolicyAnnealingRate     = kwargs.pop('offPolicyAnnealingRate', 5e-7)
         self.policyUpdatesPerExperience = kwargs.pop('policyUpdatesPerExperience', 1.)
-        self.gmdhUpdateSchedule         = kwargs.pop('gmdhUpdateSchedule', 0.1)
-        self.gmdhMaxLayer               = kwargs.pop('gmdhMaxLayer', 8)
+        self.gmdhUpdateSchedule         = kwargs.pop('gmdhUpdateSchedule', 0.2)
+        self.gmdhMaxLayer               = kwargs.pop('gmdhMaxLayer', 12)
         self.gmdhMaxValueOutput         = kwargs.pop('gmdhMaxValueOutput', 1e6)
  
         # Measure update time
@@ -63,8 +63,9 @@ class Gracer:
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.currentLearningRate)
    
     def getValue(self, state):
-        xdata = np.column_stack((state, state**2))
-        value = self.gmdh.predict(xdata) if self.gmdh.valid else np.zeros(state.shape[0])
+        scaledStates = (state - self.replayMemory.stateMean)*self.replayMemory.invStateSdev
+        inputData = np.column_stack((scaledStates, scaledStates**2))
+        value = self.gmdh.predict(inputData) if self.gmdh.valid else np.zeros(state.shape[0])
         if np.isfinite(value).all() == False:
             print("[GRACER] Error: Infinite state value predicted!")
             print("[GRACER] States:")
@@ -191,7 +192,7 @@ class Gracer:
                 # Find retrace mini-batch
                 retraceMiniBatch = miniBatchExpIds[idMisMatch == 1]
 
-                # Update retrace values in episodes 
+                # Update retrace values in episodes
                 [ self.__updateRetraceValues(expId) for expId in retraceMiniBatch ] #TODO: this updates are expensive
                 
                 end1 = time.time()
@@ -249,10 +250,10 @@ class Gracer:
             [ self.__updateRetraceValues(expId) for expId in retraceBatch ] #TODO: these updates are expensive
 
             scaledStates = self.replayMemory.getScaledState(np.arange(self.replayMemory.size))
-            xdata = np.column_stack((scaledStates, scaledStates**2))
+            inputData = np.column_stack((scaledStates, scaledStates**2))
 
-            self.gmdh.fit(xdata, self.replayMemory.retraceValueVector[:self.replayMemory.size])
-            self.lastGmdhUpdate = self.replayMemory.totalExperiences
+            self.gmdh.fit(inputData, self.replayMemory.retraceValueVector[:self.replayMemory.size])
+            self.lastGmdhUpdate = self.policyUpdateCount
 
         end3 = time.time()
         self.tgmdh += (end3-start3)
@@ -271,10 +272,10 @@ class Gracer:
         print("[GRACER] Total Experiences: {}\n[GRACER] Current Learning Rate {}\n[GRACER] Off Policy Ratio {:0.3f}\n[GRACER] Off-Policy Ref-ER Beta {}\n[GRACER] Reward Scaling Factor {:0.3f}\n[GRACER] Updates Per Sec: {:0.3f}\n[GRACER] Pct Forward {:0.1f}\n[GRACER] Pct Retrace {:0.1f}\n[GRACER] Pct Gradient {:0.1f}\n[GRACER] Pct GMDH {:0.1f}".format(self.replayMemory.totalExperiences, self.currentLearningRate, self.offPolicyRatio, self.offPolicyREFERBeta, self.replayMemory.rewardScalingFactor, numUpdates/(tupdate), pctForward, pctRetrace, pctGradient, pctGmdh))
     
     def __initValueGMDH(self, stateSpace):
-        self.gmdh = Regressor(ref_functions=('linear_cov', 'quad'), 
+        self.gmdh = Regressor(ref_functions=('linear', 'linear_cov', 'quad'), 
                             max_layer_count=self.gmdhMaxLayer,
+                            seq_type='mode4_2',
                             manual_best_neurons_selection=True, 
-                            #seq_type='mode4_2',
                             min_best_neurons_count=30, 
                             n_jobs=4)
 
