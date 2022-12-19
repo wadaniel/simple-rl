@@ -50,8 +50,13 @@ class Vracer:
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.currentLearningRate)
    
     def getValueAndPolicy(self, state):
-        rescaledState = (state - self.replayMemory.stateMean)*self.replayMemory.invStateSdev
+        rescaledState = np.multiply((state - self.replayMemory.stateMean), self.replayMemory.invStateSdev)
         valueMeanSigma = self.valuePolicyNetwork(tf.convert_to_tensor([rescaledState]))
+        return valueMeanSigma
+    
+    def getBatchValueAndPolicy(self, state):
+        rescaledState = np.multiply((state - self.replayMemory.stateMean), self.replayMemory.invStateSdev)
+        valueMeanSigma = self.valuePolicyNetwork(tf.convert_to_tensor(rescaledState))
         return valueMeanSigma
 
     def getAction(self, state):
@@ -122,11 +127,11 @@ class Vracer:
                 
                 # Forward mini-batch 
                 states = self.replayMemory.stateVector[miniBatchExpIds, :]
-                valueMeanSdev = self.getValueAndPolicy(states)
+                valueMeanSdev = self.getBatchValueAndPolicy(states)
                 
-                stateValues = valueMeanSdev[0,:,0]
-                curMeans = valueMeanSdev[0,:,1:self.actionSpace+1]
-                curSdevs = valueMeanSdev[0,:,self.actionSpace+1:]
+                stateValues = valueMeanSdev[:,0]
+                curMeans = valueMeanSdev[:,1:self.actionSpace+1]
+                curSdevs = valueMeanSdev[:,self.actionSpace+1:]
 
                 actions = self.replayMemory.actionVector[miniBatchExpIds,:]
                 expMeans = self.replayMemory.expMeanVector[miniBatchExpIds,:]
