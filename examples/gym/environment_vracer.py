@@ -3,7 +3,7 @@
 import sys
 import time
 import numpy as np
-sys.path.append('../../') # path to gracer
+sys.path.append('../../') # path to Vracer
 
 # Init argparser
 import argparse
@@ -18,7 +18,6 @@ args = parser.parse_args()
 # Choose Gym environment
 import gym
 env = gym.envs.make(args.env)
-env.seed(42)
 
 # Dimension of state and action space
 stateSpace = len(env.observation_space.high)
@@ -40,7 +39,7 @@ for episodeId in range(args.maxgen):
     done = False
     
     # Receive initial state from Environment
-    state = env.reset() 
+    state, _ = env.reset()
   
     episode = []
 
@@ -50,7 +49,7 @@ for episodeId in range(args.maxgen):
             action = vracer.getAction(state)
             
             # Execute action and observe reward & next state from Environment
-            nextState, reward, done, _ = env.step(action)
+            nextState, reward, done, _, _ = env.step(action)
             
             # Collect state-action-reward tuple
             episode.append((state, action, reward))
