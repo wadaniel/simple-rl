@@ -25,7 +25,7 @@ actionSpace = len(env.action_space.high)
 
 # Initialize Vracer
 from vracer import *
-vracer = Vracer(stateSpace, actionSpace, learningRate=0.0001, miniBatchSize=128, experienceReplaySize=131072, hiddenLayers=[128,128])
+vracer = Vracer(stateSpace, actionSpace, learningRate=0.001, miniBatchSize=128, experienceReplaySize=131072, hiddenLayers=[128,128])
 
 maxReward = -np.inf
 rewardHistory = []

@@ -216,8 +216,7 @@ class Vracer:
         pctRetrace = tretrace/ttotal*100.
         pctGradient = tgradient/ttotal*100.
         
-
-        print("[VRACER] Total Experiences: {}\n[VRACER] Current Learning Rate {}\n[VRACER] Off Policy Ratio {:0.3f}\n[VRACER] Off-Policy Ref-ER Beta {}\n[VRACER] Reward Scaling Factor {:0.3f}\n[VRACER] Updates Per Sec: {:0.3f}\n[VRACER] Pct Forward {:0.1f}\n[VRACER] Pct Retrace {:0.1f}\n[VRACER] Pct Gradient {:0.1f}".format(self.replayMemory.totalExperiences, self.currentLearningRate, self.offPolicyRatio, self.offPolicyREFERBeta, self.replayMemory.rewardScalingFactor, numUpdates/(ttotal), pctForward, pctRetrace, pctGradient))
+        print("[VRACER] Total Experiences: {}\n[VRACER] Current Learning Rate {:0.4f}\n[VRACER] Off Policy Ratio {:0.3f}\n[VRACER] Off-Policy Ref-ER Beta {:0.4f}\n[VRACER] Reward Scaling Factor {:0.3f}\n[VRACER] Updates Per Sec: {:0.3f}\n[VRACER] Pct Forward {:0.1f}\n[VRACER] Pct Retrace {:0.1f}\n[VRACER] Pct Gradient {:0.1f}".format(self.replayMemory.totalExperiences, self.currentLearningRate, self.offPolicyRatio, self.offPolicyREFERBeta, self.replayMemory.rewardScalingFactor, numUpdates/(ttotal), pctForward, pctRetrace, pctGradient))
     
     def __initValuePolicyNetwork(self, stateSpace, actionSpace, hiddenLayers):
     
