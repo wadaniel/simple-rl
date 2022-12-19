@@ -13,7 +13,7 @@ pip install -r requirements.txt
 ```
 simple-rl
 │   README.md
-│   Requirements.txt
+│   requirements.txt
 │   simpleagent.py
 │   replaymemory.py
 │   vracer.py
@@ -21,12 +21,15 @@ simple-rl
 └───examples
     │
     └───cartpole
+    │   │   README.md
     │   │   cartpole.py
     │   │   environment_simple.py
     │   │   environment_vracer.py
     │
     └───gym
-        │   environment.py
+        │   README.md
+        │   requirements.txt
+        │   environment_vracer.py
 
 ```
 
