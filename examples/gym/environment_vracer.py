@@ -10,7 +10,6 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--maxgen', type=int, default=1000)
 parser.add_argument('--maxreward', type=float, default=1e6)
-parser.add_argument('--maxavgreward', type=float, default=1e6)
 parser.add_argument('--maxexp', type=float, default=10e6)
 parser.add_argument('--env', type=str, default="Hopper-v4")
 args = parser.parse_args()

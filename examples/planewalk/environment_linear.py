@@ -2,11 +2,11 @@
 
 import sys
 import numpy as np
-sys.path.append('../../') # path to vracer
+sys.path.append('../../') # path to linearAgent
 
 from linearAgent import *
 
-maxEpisodes = 100000
+maxEpisodes = 1000
 
 stateDim = 2
 actionDim = 1
