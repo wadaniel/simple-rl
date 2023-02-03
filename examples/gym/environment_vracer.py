@@ -20,67 +20,46 @@ import gym
 env = gym.envs.make(args.env)
 
 # Dimension of state and action space
-stateSpace = len(env.observation_space.high)
-actionSpace = len(env.action_space.high)
+stateDim = len(env.observation_space.high)
+actionDim = len(env.action_space.high)
 
 # Initialize Vracer
 from vracer import *
-vracer = Vracer(stateSpace, actionSpace, learningRate=0.001, miniBatchSize=128, experienceReplaySize=131072, hiddenLayers=[128,128])
-
-maxReward = -np.inf
-rewardHistory = []
+agent = Vracer(stateDim, actionDim, maxEpisodes=args.maxgen, learningRate=0.001, miniBatchSize=128, experienceReplaySize=131072, hiddenLayers=[128,128])
 
 # Training loop
-for episodeId in range(args.maxgen):
-  
-    # Initialize episode
-    steps = 0
-    cumulativeReward = 0
-    done = False
+while(agent.isTraining() == True):
     
     # Receive initial state from Environment
     state, _ = env.reset()
   
-    episode = []
+    # Initialize episode
+    cumulativeReward = 0
+    done = False
+ 
+    agent.sendInitialState(state)
 
     while (not done):
  
             # Evaluate policy on current state
-            action = vracer.getAction(state)
+            action = agent.getAction(state)
             
             # Execute action and observe reward & next state from Environment
-            nextState, reward, done, _, _ = env.step(action)
+            state, reward, done, _, _ = env.step(action)
             
-            # Collect state-action-reward tuple
-            episode.append((state, action, reward))
-
-            # Update variables
-            steps += 1
-            state = nextState
-            cumulativeReward += reward
-
+            # Update agent
+            agent.sendStateAndReward(state, reward)
+ 
     
     # Traing agent
-    vracer.train(episode)
+    agent.train(episode)
  
-    # Statistics
-    if cumulativeReward > maxReward:
-        maxEpisode = episodeId
-        maxReward = cumulativeReward 
-    
-    numexp += len(episode)
-    rewardHistory.append(cumulativeReward)
-    rollingAvg = np.mean(rewardHistory[-100:])
-    print("\nEpisode: {}, Number of Steps (total): {} ({}), Cumulative reward: {:0.3f} (Avg. {:0.3f})".format(episodeId, steps, numexp, cumulativeReward, rollingAvg))
+    agent.print()
 
-    if cumulativeReward >= args.maxreward or rollingAvg >= args.maxavgreward:
+    if cumulativeReward >= args.maxreward:
         print("********************* Solved ********************")
         break
     
-    if numexp >= args.maxexp:
-        print("********************* Terminated ********************")
-        break
-
 t = time.time()
 outfile = '_rewards_vracer_{}_{}.npy'.format(args.env,int(t))
 np.save(outfile, np.array(rewardHistory))

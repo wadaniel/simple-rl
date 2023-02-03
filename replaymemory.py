@@ -82,9 +82,6 @@ class ReplayMemory:
     def setStateRescaling(self):
         self.stateMean = np.mean(self.stateVector[:self.size, :], axis=0)
         self.invStateSdev = 1./np.std(self.stateVector[:self.size, :], axis=0)
-        print("[ReplayMemory] State Rescaling Mean:")
-        print(self.stateMean)
-        print("[ReplayMemory] State Rescaling Sdev:")
         print(1./self.invStateSdev)
 
     def getScaledState(self, expIds):
