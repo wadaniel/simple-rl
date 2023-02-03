@@ -15,6 +15,7 @@ class Vracer:
 
         # Agent Configuration
         self.maxEpisodes                = kwargs.pop('maxEpisodes', 100000)
+        self.maxExperiences             = kwargs.pop('maxExperiences', 100000)
         self.experienceReplaySize       = kwargs.pop('experienceReplaySize', 32768)
         self.miniBatchSize              = kwargs.pop('miniBatchSize', 128)
         self.hiddenLayers               = kwargs.pop('hiddenLayers', [128, 128])
@@ -318,7 +319,7 @@ class Vracer:
         self.replayMemory.retraceValueVector[episodeIdxs] = episodeRetraceValues
 
     def isTraining(self):
-        return self.episodeCount < self.maxEpisodes
+        return self.episodeCount < self.maxEpisodes and self.totalExperiences < self.maxExperiences
 
     def print(self):
         avg = np.mean(self.returnHistory[-100:])

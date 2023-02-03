@@ -132,5 +132,5 @@ class LinearAgent:
 
     def print(self):
         avg = np.mean(self.returnHistory[-100:])
-        print(f"\n[LinearAgent] Episode: {self.episodeCount}, Number of Steps: {self.totalExperiences}, Last Episode Return: {self.lastEpisodeReturn} (Avg. {avg:.1f} / Max {self.maxEpisodeReturn})")
+        print(f"\n[LinearAgent] Episode: {self.episodeCount}, Number of Steps: {self.totalExperiences}, Last Episode Return: {self.lastEpisodeReturn:.1f} (Avg. {avg:.1f} / Max {self.maxEpisodeReturn:.1f})")
 

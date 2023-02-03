@@ -2,28 +2,22 @@
 
 import sys
 import numpy as np
-sys.path.append('../../') # path to linearAgent.py
+sys.path.append('../../') # path to vracer
 
 from linearAgent import *
 
 maxEpisodes = 100000
 
-# Init cartpole
-from cartpole import *
-cart = CartPole()
+stateDim = 2
+actionDim = 1
+stepSize = 0.1
 
-# Dimension of state and action space
-stateDim = cart.stateSpace
-actionDim = cart.actionSpace
-
-# Initialize Simple RL Agent
+# Initialize Linear RL Agent
 agent = LinearAgent(stateDim, actionDim, maxEpisodes=maxEpisodes, learningRate=0.0001, sigma=0.1)
 
 # Training loop
 while(agent.isTraining() == True):
   
-    # Reset env
-    cart.reset()
     
     # Initialize episode
     steps = 0
@@ -31,19 +25,23 @@ while(agent.isTraining() == True):
     done = False
     
     # Receive initial state from Environment
-    state = cart.getState()
+    state = np.random.normal(loc=0., scale=1., size=2)
 
     agent.sendInitialState(state)
   
-    while (not done and steps < 500):
+    while (steps < 100):
  
             # Evaluate policy on last seen state
             action = agent.getAction()
+    
+            # Calculate walking direction
+            direction = np.array([np.cos(action), np.sin(action)]).flatten()
+
+            # Move walker
+            state += stepSize * direction
             
-            # Apply action and observe reward & next state from Environment
-            done = cart.advance(action)
-            reward = cart.getReward()
-            state = cart.getState()
+            # How far we walked in y direction
+            reward = state[1] 
             
             # Update agent
             agent.sendStateAndReward(state, reward)
@@ -54,8 +52,10 @@ while(agent.isTraining() == True):
     # Traing agent
     agent.train()
 
+    # Print training information
     agent.print()
 
-    if cumulativeReward == 500.:
+    # Check termination
+    if cumulativeReward > 500:
         print("*********************Solved********************")
         sys.exit()
