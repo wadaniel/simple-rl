@@ -4,7 +4,7 @@ import sys
 import numpy as np
 sys.path.append('../../') # path to simpleagent.py
 
-from simpleagent import *
+from linearAgent import *
 
 numEpisodes = 100000
 
@@ -17,7 +17,7 @@ stateSpace = cart.stateSpace
 actionSpace = cart.actionSpace
 
 # Initialize Simple RL Agent
-sagent = SAgent(stateSpace, actionSpace, learningRate=0.0001, sigma=0.1)
+agent = LinearAgent(stateSpace, actionSpace, learningRate=0.0001, sigma=0.1)
 
 # Statistics init
 maxEpisode = -1
@@ -43,7 +43,7 @@ for episodeId in range(numEpisodes):
     while (not done and steps < 500):
  
             # Evaluate policy on current state
-            action = sagent.getAction(state)
+            action = agent.getAction(state)
             
             # Execute action and observe reward & next state from Environment
             done = cart.advance(action)
@@ -58,7 +58,7 @@ for episodeId in range(numEpisodes):
             cumulativeReward += reward
     
     # Traing agent
-    sagent.train(rewards)
+    agent.train(rewards)
 
     # Statistics
     if cumulativeReward > maxReward:

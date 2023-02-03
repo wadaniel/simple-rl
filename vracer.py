@@ -7,11 +7,11 @@ import time
 
 class Vracer:
 
-    def __init__(self, stateSpace, actionSpace, **kwargs):
+    def __init__(self, stateDim, actionDim, **kwargs):
 
         # Environment configuration
-        self.stateSpace = stateSpace
-        self.actionSpace = actionSpace
+        self.stateDim = stateDim
+        self.actionDim = actionDim
 
         # Agent Configuration
         self.experienceReplaySize       = kwargs.pop('experienceReplaySize', 32768)
@@ -33,7 +33,7 @@ class Vracer:
 
         # ReplayMemory
         self.doRescale = True
-        self.replayMemory = ReplayMemory(self.experienceReplaySize, self.stateSpace, self.actionSpace, self.discountFactor)
+        self.replayMemory = ReplayMemory(self.experienceReplaySize, self.stateDim, self.actionDim, self.discountFactor)
         
         # Variables
         self.totalExperiences           = 0
@@ -46,7 +46,7 @@ class Vracer:
         self.currentEpisodeMeansAndSdevs = []
   
         # Neural Network and Optimizer
-        self.__initValuePolicyNetwork(self.stateSpace, self.actionSpace, self.hiddenLayers)
+        self.__initValuePolicyNetwork(self.stateDim, self.actionDim, self.hiddenLayers)
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.currentLearningRate)
    
     def getValueAndPolicy(self, state):
@@ -64,14 +64,14 @@ class Vracer:
         # Evaluate policy on current state
         valueMeanSdev = self.getValueAndPolicy(state)
         value = valueMeanSdev[0,0]
-        mean = valueMeanSdev[0,1:self.actionSpace+1]
-        sdev = valueMeanSdev[0,self.actionSpace+1:]
+        mean = valueMeanSdev[0,1:self.actionDim+1]
+        sdev = valueMeanSdev[0,self.actionDim+1:]
 
         # Collect mean and sigmas for later use
         self.currentEpisodeMeansAndSdevs.append((value,mean,sdev))
 
         # Sample action according to current policy
-        action = tf.random.normal(shape=(self.actionSpace,1), mean=mean, stddev=sdev)[0,:]
+        action = tf.random.normal(shape=(self.actionDim,1), mean=mean, stddev=sdev)[0,:]
         return action
  
     def train(self, episode):
@@ -130,8 +130,8 @@ class Vracer:
                 valueMeanSdev = self.getBatchValueAndPolicy(states)
                 
                 stateValues = valueMeanSdev[:,0]
-                curMeans = valueMeanSdev[:,1:self.actionSpace+1]
-                curSdevs = valueMeanSdev[:,self.actionSpace+1:]
+                curMeans = valueMeanSdev[:,1:self.actionDim+1]
+                curSdevs = valueMeanSdev[:,self.actionDim+1:]
 
                 actions = self.replayMemory.actionVector[miniBatchExpIds,:]
                 expMeans = self.replayMemory.expMeanVector[miniBatchExpIds,:]
@@ -218,9 +218,9 @@ class Vracer:
         
         print("[VRACER] Total Experiences: {}\n[VRACER] Current Learning Rate {:0.4f}\n[VRACER] Off Policy Ratio {:0.3f}\n[VRACER] Off-Policy Ref-ER Beta {:0.4f}\n[VRACER] Reward Scaling Factor {:0.3f}\n[VRACER] Updates Per Sec: {:0.3f}\n[VRACER] Pct Forward {:0.1f}\n[VRACER] Pct Retrace {:0.1f}\n[VRACER] Pct Gradient {:0.1f}".format(self.replayMemory.totalExperiences, self.currentLearningRate, self.offPolicyRatio, self.offPolicyREFERBeta, self.replayMemory.rewardScalingFactor, numUpdates/(ttotal), pctForward, pctRetrace, pctGradient))
     
-    def __initValuePolicyNetwork(self, stateSpace, actionSpace, hiddenLayers):
+    def __initValuePolicyNetwork(self, stateDim, actionDim, hiddenLayers):
     
-        inputs = tf.keras.Input(shape=(stateSpace,), dtype='float32')
+        inputs = tf.keras.Input(shape=(stateDim,), dtype='float32')
         for i, size in enumerate(hiddenLayers):
             if i == 0:
                 x = tf.keras.layers.Dense(size, kernel_initializer='glorot_uniform', activation=self.activationFunction, dtype='float32')(inputs)
@@ -231,8 +231,8 @@ class Vracer:
         scaledGlorot = lambda shape, dtype : 0.001*tf.keras.initializers.GlorotNormal()(shape)
 
         value = tf.keras.layers.Dense(1, kernel_initializer=scaledGlorot, activation = "linear", dtype='float32')(x)
-        mean  = tf.keras.layers.Dense(actionSpace, kernel_initializer=scaledGlorot, activation = "linear", dtype='float32')(x)
-        sigma = tf.keras.layers.Dense(actionSpace, kernel_initializer=scaledGlorot, activation = "softplus", dtype='float32')(x)
+        mean  = tf.keras.layers.Dense(actionDim, kernel_initializer=scaledGlorot, activation = "linear", dtype='float32')(x)
+        sigma = tf.keras.layers.Dense(actionDim, kernel_initializer=scaledGlorot, activation = "softplus", dtype='float32')(x)
 
         outputs = tf.keras.layers.Concatenate()([value, mean, sigma])
         self.valuePolicyNetwork = tf.keras.Model(inputs=inputs, outputs=outputs, name='valuePolicyNetwork')

@@ -3,13 +3,13 @@ import numpy as np
 
 import time
 
-class SAgent:
+class LinearAgent:
 
-    def __init__(self, stateSpace, actionSpace, **kwargs):
+    def __init__(self, stateDim, actionDim, **kwargs):
 
         # Environment configuration
-        self.stateSpace = stateSpace
-        self.actionSpace = actionSpace
+        self.stateDim = stateDim
+        self.actionDim = actionDim
 
         # Agent Configuration
         self.learningRate               = kwargs.pop('learningRate', 0.001)
@@ -28,8 +28,8 @@ class SAgent:
         self.currentEpisodeActions      = []
   
         # Linear Policy and Value function
-        self.policyMatrix = np.random.normal(0., 0.001, size=(stateSpace, actionSpace))
-        self.valueMatrix = np.random.normal(0., 0.001, size=(stateSpace))
+        self.policyMatrix = np.random.normal(0., 0.001, size=(stateDim, actionDim))
+        self.valueMatrix = np.random.normal(0., 0.001, size=(stateDim))
    
     def getValue(self, state):
         return np.matmul(state,self.valueMatrix)
