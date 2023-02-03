@@ -60,5 +60,4 @@ while(agent.isTraining() == True):
         break
     
 t = time.time()
-outfile = '_rewards_vracer_{}_{}.npy'.format(args.env,int(t))
-np.save(outfile, np.array(rewardHistory))
+np.save(f'_rewardHistory_{args.env}', np.array(agent.returnHistory))

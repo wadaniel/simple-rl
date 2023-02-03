@@ -69,4 +69,4 @@ while(agent.isTraining() == True):
 
 t = time.time()
 outfile = '_rewards_vracer_{}.npy'.format(int(t))
-np.save(outfile, np.array(rewardHistory))
+np.save(outfile, np.array(agent.returnHistory))
