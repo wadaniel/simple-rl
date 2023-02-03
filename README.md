@@ -1,6 +1,6 @@
 # simple-rl
 This repo contains a Python implementation of [VRACER with Ref-ER](https://www.cse-lab.ethz.ch/wp-content/papercite-data/pdf/novati2019a.pdf) and a couple of examples.
-VRACER Configuration parameters can be found in the ctor of the Vracer class.
+VRACER Configuration parameters can be found in the constructor of the Vracer class.
 
 
 ## Requirements
