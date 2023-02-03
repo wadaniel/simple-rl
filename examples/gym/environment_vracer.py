@@ -12,7 +12,7 @@ parser.add_argument('--maxgen', type=int, default=1000)
 parser.add_argument('--maxreward', type=float, default=1e6)
 parser.add_argument('--maxavgreward', type=float, default=1e6)
 parser.add_argument('--maxexp', type=float, default=10e6)
-parser.add_argument('--env', type=str, default="Pendulum-v1")
+parser.add_argument('--env', type=str, default="Hopper-v4")
 args = parser.parse_args()
 
 # Choose Gym environment
@@ -25,7 +25,7 @@ actionDim = len(env.action_space.high)
 
 # Initialize Vracer
 from vracer import *
-agent = Vracer(stateDim, actionDim, maxEpisodes=args.maxgen, learningRate=0.001, miniBatchSize=128, experienceReplaySize=131072, hiddenLayers=[128,128])
+agent = Vracer(stateDim, actionDim, maxEpisodes=args.maxgen, learningRate=0.001, miniBatchSize=32, experienceReplaySize=131072, hiddenLayers=[32,32])
 
 # Training loop
 while(agent.isTraining() == True):
@@ -50,9 +50,8 @@ while(agent.isTraining() == True):
             # Update agent
             agent.sendStateAndReward(state, reward)
  
-    
     # Traing agent
-    agent.train(episode)
+    agent.train()
  
     agent.print()
 
