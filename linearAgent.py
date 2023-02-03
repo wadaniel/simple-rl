@@ -12,6 +12,7 @@ class LinearAgent:
         self.actionDim = actionDim
 
         # Agent Configuration
+        self.maxEpisodes                = kwargs.pop('maxEpisodes', 100000)
         self.learningRate               = kwargs.pop('learningRate', 0.001)
         self.sigma                      = kwargs.pop('sigma', 1.)
         self.discountFactor             = kwargs.pop('discountFactor', 0.99)
@@ -21,15 +22,23 @@ class LinearAgent:
             raise TypeError('Unepxected kwargs provided: %s' % list(kwargs.keys()))
 
         # Variables
+        self.episodeCount               = 0
         self.totalExperiences           = 0
         self.currentEpisodeValues       = []
         self.currentEpisodeMeans        = []
         self.currentEpisodeStates       = []
         self.currentEpisodeActions      = []
+        self.currentEpisodeRewards      = []
   
         # Linear Policy and Value function
         self.policyMatrix = np.random.normal(0., 0.001, size=(stateDim, actionDim))
         self.valueMatrix = np.random.normal(0., 0.001, size=(stateDim))
+        
+        # Stats
+        self.returnHistory = []
+        self.lastEpisodeReturn = -np.infty
+        self.maxEpisodeReturn = -np.infty
+        self.bestEpisode = 0.
    
     def getValue(self, state):
         return np.matmul(state,self.valueMatrix)
@@ -37,8 +46,11 @@ class LinearAgent:
     def getPolicy(self, state):
         return np.matmul(state,self.policyMatrix)
 
-    def getAction(self, state):
+    def getAction(self):
             
+        # Take last seen state
+        state = self.currentEpisodeStates[-1]
+
         # Evaluate policy on current state
         value = self.getValue(state)
         mean = self.getPolicy(state)
@@ -49,28 +61,44 @@ class LinearAgent:
         # Store values for training
         self.currentEpisodeValues.append(value)
         self.currentEpisodeMeans.append(mean)
-        self.currentEpisodeStates.append(state)
         self.currentEpisodeActions.append(action)
-        self.totalExperiences += 1
         
         return action
+
+    def sendInitialState(self, state):
+
+        if self.lastEpisodeReturn > self.maxEpisodeReturn:
+            self.maxEpisodeReturn = self.lastEpisodeReturn
+            self.bestEpisode = self.episodeCount
+
+        self.episodeCount += 1
+        self.lastEpisodeReturn = np.sum(self.currentEpisodeRewards)
+        self.returnHistory.append(self.lastEpisodeReturn)
+
+        # Empty episode for next episode
+        self.currentEpisodeMeans = []
+        self.currentEpisodeActions = []
+        self.currentEpisodeValues = []
+        self.currentEpisodeStates = []
+        self.currentEpisodeRewards = []
+
+        self.currentEpisodeStates.append(state)
+
+    def sendStateAndReward(self, state, reward):
+        self.currentEpisodeStates.append(state)
+        self.currentEpisodeRewards.append(reward)
+        self.totalExperiences += 1
  
-    def train(self, episodeRewards):
-
-        episodeLength = len(episodeRewards)
-
-        # Safety check
-        if episodeLength != len(self.currentEpisodeValues):
-            print("[SAGENT] Error: Number of generated actions {} does not coincide with episode length ({})! Exit..".format(len(self.currentEpisodeValues), len(episodeRewards)))
-            sys.exit()
+    def train(self):
 
         # Transofrm lists
-        rewards = np.array(episodeRewards)
+        rewards = np.array(self.currentEpisodeRewards)
         values  = np.array(self.currentEpisodeValues)
         means   = np.stack(self.currentEpisodeMeans)
-        states  = np.stack(self.currentEpisodeStates)
+        states  = np.stack(self.currentEpisodeStates[:-1])
         actions = np.stack(self.currentEpisodeActions)
 
+        episodeLength = len(rewards)
         vtbc = np.zeros(episodeLength)
         vtbc[-1] = rewards[-1]
         
@@ -99,4 +127,10 @@ class LinearAgent:
         self.currentEpisodeValues = []
         self.currentEpisodeStates = []
 
-        print("[SAGENT] Total Experiences: {}".format(self.totalExperiences))
+    def isTraining(self):
+        return self.episodeCount < self.maxEpisodes
+
+    def print(self):
+        avg = np.mean(self.returnHistory[-100:])
+        print(f"\n[LinearAgent] Episode: {self.episodeCount}, Number of Steps: {self.totalExperiences}, Last Episode Return: {self.lastEpisodeReturn} (Avg. {avg} / Max {self.maxEpisodeReturn})")
+

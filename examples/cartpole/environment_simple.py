@@ -6,7 +6,7 @@ sys.path.append('../../') # path to simpleagent.py
 
 from linearAgent import *
 
-numEpisodes = 100000
+maxEpisodes = 100000
 
 # Init cartpole
 from cartpole import *
@@ -17,7 +17,7 @@ stateSpace = cart.stateSpace
 actionSpace = cart.actionSpace
 
 # Initialize Simple RL Agent
-agent = LinearAgent(stateSpace, actionSpace, learningRate=0.0001, sigma=0.1)
+agent = LinearAgent(stateSpace, actionSpace, maxEpisodes=maxEpisodes, learningRate=0.0001, sigma=0.1)
 
 # Statistics init
 maxEpisode = -1
@@ -25,10 +25,10 @@ maxReward = -np.inf
 rewardHistory = []
 
 # Training loop
-for episodeId in range(numEpisodes):
+while(agent.isTraining() == True):
   
     # Reset env
-    cart.reset(episodeId)
+    cart.reset()
     
     # Initialize episode
     steps = 0
@@ -37,37 +37,29 @@ for episodeId in range(numEpisodes):
     
     # Receive initial state from Environment
     state = cart.getState()
-  
-    rewards = []
 
+    agent.sendInitialState(state)
+  
     while (not done and steps < 500):
  
-            # Evaluate policy on current state
-            action = agent.getAction(state)
+            # Evaluate policy on last seen state
+            action = agent.getAction()
             
-            # Execute action and observe reward & next state from Environment
+            # Apply action and observe reward & next state from Environment
             done = cart.advance(action)
             reward = cart.getReward()
-            
-            # Collect state-action-reward tuple
-            rewards.append(reward)
-
-            # Update variables
-            steps += 1
             state = cart.getState()
+            
+            # Update agent
+            agent.sendStateAndReward(state, reward)
+            
+            steps += 1
             cumulativeReward += reward
     
     # Traing agent
-    agent.train(rewards)
+    agent.train()
 
-    # Statistics
-    if cumulativeReward > maxReward:
-        maxEpisode = episodeId
-        maxReward = cumulativeReward 
-    
-    rewardHistory.append(cumulativeReward)
-    rollingAvg = np.mean(rewardHistory[-100:])
-    print("\nEpisode: {}, Number of Steps : {}, Cumulative reward: {:0.1f} (Avg. {:0.2f} / Max {:0.1f} at {})".format(episodeId, steps, cumulativeReward, rollingAvg, maxReward, maxEpisode))
+    agent.print()
 
     if cumulativeReward == 500.:
         print("*********************Solved********************")
