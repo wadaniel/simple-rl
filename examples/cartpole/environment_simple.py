@@ -13,16 +13,11 @@ from cartpole import *
 cart = CartPole()
 
 # Dimension of state and action space
-stateSpace = cart.stateSpace
-actionSpace = cart.actionSpace
+stateDim = cart.stateSpace
+actionDim = cart.actionSpace
 
 # Initialize Simple RL Agent
-agent = LinearAgent(stateSpace, actionSpace, maxEpisodes=maxEpisodes, learningRate=0.0001, sigma=0.1)
-
-# Statistics init
-maxEpisode = -1
-maxReward = -np.inf
-rewardHistory = []
+agent = LinearAgent(stateDim, actionDim, maxEpisodes=maxEpisodes, learningRate=0.0001, sigma=0.1)
 
 # Training loop
 while(agent.isTraining() == True):

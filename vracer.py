@@ -14,6 +14,7 @@ class Vracer:
         self.actionDim = actionDim
 
         # Agent Configuration
+        self.maxEpisodes                = kwargs.pop('maxEpisodes', 100000)
         self.experienceReplaySize       = kwargs.pop('experienceReplaySize', 32768)
         self.miniBatchSize              = kwargs.pop('miniBatchSize', 128)
         self.hiddenLayers               = kwargs.pop('hiddenLayers', [128, 128])
@@ -36,6 +37,7 @@ class Vracer:
         self.replayMemory = ReplayMemory(self.experienceReplaySize, self.stateDim, self.actionDim, self.discountFactor)
         
         # Variables
+        self.episodeCount               = 0
         self.totalExperiences           = 0
         self.currentLearningRate        = self.learningRate
         self.policyUpdateCount          = 0
@@ -43,11 +45,21 @@ class Vracer:
         self.offPolicyCurrentCutOff     = self.offPolicyCutOff
         self.experienceReplayStartSize  = 0.5*self.experienceReplaySize
         self.episodeHistory             = []
+        self.currentEpisodeStates       = []
+        self.currentEpisodeActions      = []
         self.currentEpisodeMeansAndSdevs = []
+        self.currentEpisodeRewards      = []
   
         # Neural Network and Optimizer
         self.__initValuePolicyNetwork(self.stateDim, self.actionDim, self.hiddenLayers)
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.currentLearningRate)
+
+        # Stats
+        self.returnHistory = []
+        self.lastEpisodeReturn = -np.infty
+        self.maxEpisodeReturn = -np.infty
+        self.bestEpisode = 0.
+ 
    
     def getValueAndPolicy(self, state):
         rescaledState = np.multiply((state - self.replayMemory.stateMean), self.replayMemory.invStateSdev)
@@ -66,23 +78,45 @@ class Vracer:
         value = valueMeanSdev[0,0]
         mean = valueMeanSdev[0,1:self.actionDim+1]
         sdev = valueMeanSdev[0,self.actionDim+1:]
-
-        # Collect mean and sigmas for later use
-        self.currentEpisodeMeansAndSdevs.append((value,mean,sdev))
-
+        
         # Sample action according to current policy
         action = tf.random.normal(shape=(self.actionDim,1), mean=mean, stddev=sdev)[0,:]
+
+        # Collect mean and sigmas for later use
+        self.currentEpisodeActions.append(action)
+        self.currentEpisodeValues.append(value)
+        self.currentEpisodeMeansAndSdevs.append((mean,sdev))
+ 
         return action
  
-    def train(self, episode):
+    def sendInitialState(self, state):
 
-        # Safety check
-        if len(episode) != len(self.currentEpisodeMeansAndSdevs):
-            print("[VRACER] Error: Number of generated actions {} does not coincide with episode length ({})! Exit..".format(len(self.currentEpisodeMeansAndSdevs), len(episode)))
-            sys.exit()
+        if self.lastEpisodeReturn > self.maxEpisodeReturn:
+            self.maxEpisodeReturn = self.lastEpisodeReturn
+            self.bestEpisode = self.episodeCount
 
+        self.episodeCount += 1
+        self.lastEpisodeReturn = np.sum(self.currentEpisodeRewards)
+        self.returnHistory.append(self.lastEpisodeReturn)
+
+        # Empty episode for next episode
+        self.currentEpisodeMeansAndSdevs = []
+        self.currentEpisodeActions = []
+        self.currentEpisodeValues = []
+        self.currentEpisodeStates = []
+        self.currentEpisodeRewards = []
+
+        self.currentEpisodeStates.append(state)
+    
+    def sendStateAndReward(self, state, reward):
+        self.currentEpisodeStates.append(state)
+        self.currentEpisodeRewards.append(reward)
+        self.totalExperiences += 1
+ 
+    def train(self):
+        
         # Mix episode with means and sigmas
-        episode = [ (state, action, reward, value, mean, sdev) for (state, action, reward), (value, mean, sdev) in zip(episode, self.currentEpisodeMeansAndSdevs) ] 
+        episode = [ (state, action, reward, value, mean, sdev) for (state, action, reward, value, (mean, sdev)) in zip(self.currentEpisodeStates, self.currentEpisodeActions, self.currentEpisodeRewards, self.currentEpisodeValues, self.currentEpisodeMeansAndSdevs) ] 
 
         # Store eisode
         self.replayMemory.processAndStoreEpisode(episode)
@@ -282,3 +316,11 @@ class Vracer:
             episodeRetraceValues[-idx-2] += episodeTrIWs[-idx-2]*self.discountFactor*episodeRetraceValues[-idx-1]
         
         self.replayMemory.retraceValueVector[episodeIdxs] = episodeRetraceValues
+
+    def isTraining(self):
+        return self.episodeCount < self.maxEpisodes
+
+    def print(self):
+        avg = np.mean(self.returnHistory[-100:])
+        print(f"\n[VRACER] Episode: {self.episodeCount}, Number of Steps: {self.totalExperiences}, Last Episode Return: {self.lastEpisodeReturn} (Avg. {avg:.1f} / Max {self.maxEpisodeReturn})")
+
